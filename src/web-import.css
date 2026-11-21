@@ -1,0 +1,6 @@
+/* "Importovat z webu FJFI" dialog (src/import/web.ts); builds on .lesson-dialog / .lesson-form. */
+.web-import-fields { display: flex; flex-direction: column; gap: 0.75rem; }
+.web-import-form [hidden] { display: none; }
+.web-import-form .hint, .web-import-form .status { margin: 0; }
+.web-import-form .status:empty { display: none; }
+.web-import-error { color: var(--danger); }

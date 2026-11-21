@@ -4,11 +4,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # No schedule: the copy of the FJFI timetables (public/fjfi/, see
+  # scripts/fetch-fjfi.mjs) is refreshed whenever the site deploys. At the
+  # start of each semester run this workflow by hand (Actions → Run
+  # workflow); see "Each semester" in README.md.
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -24,7 +26,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Pages serves the site under /<repo name>/; take it from the repo so a rename can't break asset URLs.
+      # Files from the previous run let the script send conditional requests
+      # and download only timetables that changed.
+      - uses: actions/cache@v4
+        with:
+          path: public/fjfi
+          key: fjfi-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fjfi-
+      - run: npm run fetch-fjfi
+      # Pages serves the site under /<repo name>/; derive it so renames cannot break asset URLs.
       - run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
@@ -34,9 +44,23 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+  # Reports when PROGRAMS in src/config.ts no longer matches the bachelor
+  # programs on the website. Independent of the deploy: a failure here only
+  # marks the run as failed, the site still deploys.
+  check-programs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run check-programs

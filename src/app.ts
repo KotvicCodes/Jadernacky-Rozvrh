@@ -78,13 +78,14 @@ export class App {
 
   private importing = false;
 
-  private async importFile(file: Blob, name: string): Promise<void> {
+  private async importFile(file: Blob, name: string, scheduleName = ''): Promise<void> {
     if (this.importing) return;
     this.importing = true;
     document.body.classList.add('busy');
     try {
       const { importSchedule } = await import('./import');
       const { schedule, usedOcr } = await importSchedule(file, name, (message) => (this.status.textContent = message));
+      if (scheduleName) schedule.name = cleanText(scheduleName);
       this.state.schedules.push(schedule);
       this.state.activeId = schedule.id;
       const check = usedOcr ? ' Texty byly rozpoznány z obrázku – zkontroluj je prosím (nejpřesnější je import z PDF).' : '';
@@ -246,8 +247,7 @@ export class App {
       if (file) void this.importFile(file, file.name);
       fileInput.value = '';
     });
-    const importBtn = h('button', { type: 'button', class: 'btn' }, 'Importovat');
-    importBtn.addEventListener('click', () => fileInput.click());
+    const importMenu = this.renderImportMenu(() => fileInput.click());
 
     // Two rows: the pickers, then all buttons in one row below them (it only
     // wraps when the screen is too narrow).
@@ -258,8 +258,66 @@ export class App {
         h('label', { class: 'toolbar-field' }, h('span', {}, 'Obor'), programSelect),
         h('label', { class: 'toolbar-field toolbar-field--narrow' }, h('span', {}, 'Kruh'), groupSelect),
       ),
-      h('div', { class: 'toolbar-row toolbar-actions' }, pngBtn, pdfBtn, importBtn, fileInput, deleteBtn),
+      h('div', { class: 'toolbar-row toolbar-actions' }, pngBtn, pdfBtn, importMenu, fileInput, deleteBtn),
     );
+  }
+
+  /** "Importovat" opens a small menu: a file from this device, or a timetable straight from the FJFI website. */
+  private renderImportMenu(pickFile: () => void): HTMLElement {
+    const button = h('button', { type: 'button', class: 'btn btn-menu', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, 'Importovat');
+    const fromDevice = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Ze zařízení…');
+    const fromWeb = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Z webu FJFI…');
+    const menu = h('div', { class: 'menu', role: 'menu', hidden: true }, fromDevice, fromWeb);
+    const wrap = h('div', { class: 'menu-wrap' }, button, menu);
+
+    const onOutside = (e: Event) => {
+      if (!wrap.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        close();
+        button.focus();
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const items = [fromDevice, fromWeb];
+        const i = items.indexOf(document.activeElement as HTMLButtonElement);
+        items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]!.focus();
+      }
+    };
+    const open = () => {
+      menu.hidden = false;
+      button.setAttribute('aria-expanded', 'true');
+      document.addEventListener('pointerdown', onOutside);
+      wrap.addEventListener('keydown', onKey);
+      fromDevice.focus();
+    };
+    const close = () => {
+      menu.hidden = true;
+      button.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('pointerdown', onOutside);
+      wrap.removeEventListener('keydown', onKey);
+    };
+    button.addEventListener('click', () => (menu.hidden ? open() : close()));
+    fromDevice.addEventListener('click', () => {
+      close();
+      pickFile();
+    });
+    fromWeb.addEventListener('click', () => {
+      close();
+      void this.importFromWeb();
+    });
+    return wrap;
+  }
+
+  private async importFromWeb(): Promise<void> {
+    if (this.importing) return;
+    try {
+      const { pickFjfiTimetable } = await import('./import/web');
+      const picked = await pickFjfiTimetable();
+      if (picked) await this.importFile(picked.file, picked.fileName, picked.shortLabel);
+    } catch (err) {
+      this.status.textContent = `Import se nepovedl: ${err instanceof Error ? err.message : String(err)}`;
+    }
   }
 
   private render(): void {

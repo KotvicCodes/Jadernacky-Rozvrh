@@ -96,7 +96,7 @@ describe('timetable ID in the corner', () => {
 describe('toolbar and header', () => {
   it('has the download, import and delete buttons in that order, and no add button', () => {
     const root = setup();
-    const buttons = [...root.querySelectorAll<HTMLButtonElement>('.toolbar-actions button')].map((b) => b.textContent);
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('.toolbar-actions > button, .toolbar-actions > .menu-wrap > .btn')].map((b) => b.textContent);
     expect(buttons).toEqual(['Stáhnout PNG', 'Stáhnout PDF', 'Importovat', 'Smazat rozvrh']);
   });
 
@@ -112,5 +112,20 @@ describe('toolbar and header', () => {
     expect(bug.textContent).toBe('Našel/našla jsi bug? Oprav ho!');
     expect(bug.href).toBe('https://github.com/KotvicCodes/Jadernacky-Rozvrh');
     expect([credit.rel, bug.rel]).toEqual(['noopener', 'noopener']);
+  });
+});
+
+describe('Importovat menu', () => {
+  it('offers import from the device and from the FJFI website', () => {
+    const root = setup();
+    const button = root.querySelector<HTMLButtonElement>('.menu-wrap > .btn')!;
+    const menu = root.querySelector<HTMLElement>('.menu')!;
+    expect(menu.hidden).toBe(true);
+    button.click();
+    expect(menu.hidden).toBe(false);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect([...menu.querySelectorAll('[role="menuitem"]')].map((i) => i.textContent)).toEqual(['Ze zařízení…', 'Z webu FJFI…']);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(menu.hidden).toBe(true);
   });
 });
