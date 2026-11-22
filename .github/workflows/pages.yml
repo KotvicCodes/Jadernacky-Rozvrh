@@ -4,21 +4,25 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  # No schedule: the copy of the FJFI timetables (public/fjfi/, see
-  # scripts/fetch-fjfi.mjs) is refreshed whenever the site deploys. At the
-  # start of each semester run this workflow by hand (Actions → Run
-  # workflow); see "Each semester" in README.md.
+  schedule:
+    # Mid-semester releases: 15 February and 15 September. GitHub uses UTC.
+    - cron: '23 4 15 2,9 *'
+    # API keepalive only; no timetable refresh, build or deployment.
+    - cron: '13 4 1 * *'
 
 permissions:
   contents: read
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # Let an active deployment finish; the newest pending run follows it.
+  cancel-in-progress: false
 
 jobs:
   build:
+    if: github.event_name != 'schedule' || github.event.schedule == '23 4 15 2,9 *'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,14 +30,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Files from the previous run let the script send conditional requests
-      # and download only timetables that changed.
+      # Conditional requests reuse PDFs that have not changed.
       - uses: actions/cache@v4
         with:
           path: public/fjfi
-          key: fjfi-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: fjfi-
-      - run: npm run fetch-fjfi
+          key: fjfi-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fjfi-v1-
+      - name: Refresh bachelor and master timetables and program choices
+        run: npm run sync-fjfi
+      - name: Refresh OCR lecturers and rooms
+        run: npm run update-names
+      - run: npm test
       # Pages serves the site under /<repo name>/; derive it so renames cannot break asset URLs.
       - run: npm run build
         env:
@@ -43,7 +50,10 @@ jobs:
           path: dist
   deploy:
     needs: build
+    # A manual run on a feature branch validates the build without publishing it.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
@@ -53,14 +63,17 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
-  # Reports when PROGRAMS in src/config.ts no longer matches the bachelor
-  # programs on the website. Independent of the deploy: a failure here only
-  # marks the run as failed, the site still deploys.
-  check-programs:
+  # GitHub disables schedules in public repos after 60 days without activity.
+  # Renew the workflow via its API, without dummy commits or a personal token.
+  # Runs monthly between semesters, independently of any build/deploy.
+  keepalive:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm run check-programs
+      - name: Keep the scheduled workflow enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/enable"

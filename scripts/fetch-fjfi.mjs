@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Mirrors the official student timetables of rozvrh.fjfi.cvut.cz into
+ * Mirrors the official bachelor/master student timetables of rozvrh.fjfi.cvut.cz into
  * public/fjfi/ for the "Importovat z webu FJFI" dialog. The site sends no
  * CORS headers, so the app cannot fetch them itself; Vite copies public/
  * into the build and the app loads them from its own origin.
  *
  *   npm run fetch-fjfi                    # manifest.json + one PDF per kruh
+ *   npm run sync-fjfi                     # also refresh bachelor program choices
  *   npm run fetch-fjfi -- --check-programs # only compare src/config.ts PROGRAMS with the site
  *
- * The list of pages is read from the site's navigation, so new years and
+ * The degree-year pages are read from the site's navigation, so new years and
  * programs appear without changes here. Exits non-zero when the pages
  * cannot be parsed or nothing is found, so a redesign fails the deploy
  * instead of publishing an empty list.
@@ -20,49 +21,29 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MANIFEST_VERSION, SITE, bachelorCodes, buildYears, configProgramCodes, parseNav, parsePage, programDrift } from './fjfi-site.mjs';
+import { get } from './fjfi-fetch.mjs';
+import { updateProgramSource } from './fjfi-metadata.mjs';
+import { MANIFEST_VERSION, SITE, bachelorCodes, buildYears, configProgramCodes, parseNav, parsePage, programDrift, isDegreeYear } from './fjfi-site.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT = join(ROOT, 'public', 'fjfi');
-const USER_AGENT = 'jaderka-rozvrh-sync';
 const SAFE_FILE = /^[A-Za-z0-9_-]+\.(pdf|png)$/;
-// PDFs: ~0.6 MB each, ~73 MB for all ~120 timetables (Nov 2026) — fine for
+// PDFs: ~0.6 MB each, ~71 MB for the 108 degree timetables (Nov 2026) — fine for
 // GitHub Pages (1 GB site limit) and they OCR much better than the PNGs.
 const PREFER = process.env.FJFI_FORMAT === 'png' ? 'png' : 'pdf';
 
 const checkOnly = process.argv.includes('--check-programs');
+const updatePrograms = process.argv.includes('--update-programs');
 
 class FatalError extends Error {}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-/** GET with retries and exponential backoff on network errors, 429 and 5xx. */
-async function get(url, headers = {}) {
-  for (let attempt = 1; ; attempt++) {
-    let res;
-    try {
-      res = await fetch(url, { headers: { 'User-Agent': USER_AGENT, ...headers }, signal: AbortSignal.timeout(60_000) });
-    } catch (err) {
-      if (attempt >= 4) throw new FatalError(`${url}: ${err.message}`);
-    }
-    if (res) {
-      if (res.ok || res.status === 304) return res;
-      if (res.status !== 429 && res.status < 500) throw new FatalError(`${url}: HTTP ${res.status}`);
-      if (attempt >= 4) throw new FatalError(`${url}: HTTP ${res.status}`);
-    }
-    const wait = 1000 * 2 ** (attempt - 1);
-    console.warn(`  retry ${attempt} for ${url} in ${wait / 1000} s`);
-    await sleep(wait);
-  }
-}
 
 async function text(url) {
   return (await get(url)).text();
 }
 
 async function crawl() {
-  const nav = parseNav(await text(`${SITE}/`));
-  if (!nav.length) throw new FatalError('No student timetable pages found in the site navigation (redesign?).');
+  const nav = parseNav(await text(`${SITE}/`)).filter((page) => isDegreeYear(page.title));
+  if (!nav.length) throw new FatalError('No bachelor/master timetable pages found in the site navigation (redesign?).');
   const pages = [];
   for (const page of nav) {
     const entries = parsePage(await text(`${SITE}/rozvrh/studenti/${page.slug}`));
@@ -171,6 +152,11 @@ try {
     const tmp = join(OUT, 'manifest.json.tmp');
     writeFileSync(tmp, `${JSON.stringify(manifest, null, 2)}\n`);
     renameSync(tmp, join(OUT, 'manifest.json'));
+    if (updatePrograms) {
+      const config = join(ROOT, 'src', 'config.ts');
+      writeFileSync(config, updateProgramSource(readFileSync(config, 'utf8'), years));
+      if (!checkPrograms(years)) throw new FatalError('Program choices did not sync correctly.');
+    }
     const programs = years.reduce((n, y) => n + y.programs.length, 0);
     console.log(
       `\n${years.length} years, ${programs} programs, ${count} timetables (${(bytes / 1e6).toFixed(1)} MB; ${fetched} downloaded, ${unchanged} unchanged) → public/fjfi/`,

@@ -5,6 +5,7 @@ import {
   bachelorCodes,
   buildYears,
   configProgramCodes,
+  isDegreeYear,
   parseNav,
   parsePage,
   programDrift,
@@ -12,6 +13,7 @@ import {
   shortYearLabel,
   type PageEntry,
 } from '../scripts/fjfi-site.mjs';
+import { parseRoomCodes, parseTeacherNames, updateProgramSource } from '../scripts/fjfi-metadata.mjs';
 import { PROGRAMS } from '../src/config';
 import { kruhChoices, parseManifest, pickFjfiTimetable, timetableLabel, timetableShortLabel, type FjfiProgram } from '../src/import/web';
 
@@ -48,6 +50,12 @@ describe('website parsing', () => {
     expect(shortYearLabel('Rozvrh 1. ročníku bakalářského studia')).toBe('1. ročník Bc.');
     expect(shortYearLabel('Rozvrh 2. ročníku navazujícího magisterského studia')).toBe('2. ročník NMS');
     expect(shortYearLabel('Rozvrh pro studium v Děčíně')).toBe('Pro studium v Děčíně');
+  });
+
+  it('syncs bachelor and master years without depending on auxiliary pages', () => {
+    const pages = parseNav(bs1Html).filter((page) => isDegreeYear(page.title));
+    expect(pages.map((page) => page.slug)).toEqual(['bs1', 'bs2', 'bs3', 'nms1', 'nms2']);
+    expect(isDegreeYear('Rozvrh 1. ročníku doktorského studia')).toBe(false);
   });
 
   it('reads the timetable entries with their files, ignoring other links', () => {
@@ -113,6 +121,45 @@ describe('program drift check', () => {
   it('reports added and removed programs', () => {
     expect(programDrift(['JCF', 'OLD'], ['JCF', 'NEW'])).toEqual({ added: ['NEW'], removed: ['OLD'] });
     expect(programDrift(['A', 'B'], ['B', 'A'])).toEqual({ added: [], removed: [] });
+  });
+});
+
+describe('automatic metadata refresh', () => {
+  const source = readFileSync(join(process.cwd(), 'src/config.ts'), 'utf8');
+
+  it('adds, removes and renames bachelor choices while preserving the rest of config', () => {
+    const years = buildYears(fakeSite(), pickPdf);
+    years[0]!.programs.find((p) => p.code === 'JCF')!.name = 'Nový "název" $&\noboru';
+    const updated = updateProgramSource(source, years);
+    expect(configProgramCodes(updated)).toEqual(['AMSM', 'FI_IPL', 'JCF']);
+    expect(updated).toContain(JSON.stringify('Nový "název" $&\noboru'));
+    expect(updated.slice(updated.indexOf('export interface ParsedSpec'))).toBe(source.slice(source.indexOf('export interface ParsedSpec')));
+    expect(updated.slice(0, updated.indexOf('export const PROGRAMS'))).toBe(source.slice(0, source.indexOf('export const PROGRAMS')));
+    expect(updateProgramSource(updated, years)).toBe(updated);
+  });
+
+  it('refuses to erase program choices if parsing fails or only master years remain', () => {
+    expect(() => updateProgramSource(source, [])).toThrow(/No bachelor programs/);
+    const years = buildYears(fakeSite(), pickPdf);
+    years[0]!.prefix = 'Ing1';
+    expect(() => updateProgramSource(source, years)).toThrow(/No bachelor programs/);
+    expect(() => updateProgramSource('unexpected config format', buildYears(fakeSite(), pickPdf))).toThrow(/declaration not found/);
+  });
+
+  it('reads OCR names and room codes without navigation labels, headers or location notes', () => {
+    expect(parseTeacherNames(`<summary>Navigation</summary><main>
+      <summary>===== Externisté =====</summary><summary>Novák&nbsp;Jiří (Děčín)</summary>
+      <summary><span>Černý</span></summary></main>`)).toEqual(['Novák Jiří', 'Černý']);
+    expect(parseRoomCodes(`<main><table><tr><th>KOS</th><th>Kód v rozvrhu</th></tr>
+      <tr class="room"><td>BR:103</td><td><b>B-103</b> (aula)</td></tr>
+      <tr><td>BR:121</td><td>&nbsp;</td></tr></table></main>`)).toEqual(['B-103']);
+  });
+
+  it('rejects empty or redesigned OCR pages instead of generating empty dictionaries', () => {
+    for (const parse of [parseTeacherNames, parseRoomCodes]) {
+      expect(() => parse('<html>Temporarily unavailable</html>')).toThrow(/main content/);
+      expect(() => parse('<main><p>New layout</p></main>')).toThrow(/redesign/);
+    }
   });
 });
 

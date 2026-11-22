@@ -52,36 +52,39 @@ npm run fetch-fjfi      # copy the official timetables into public/fjfi/ (needed
 npm run check-programs  # does PROGRAMS in src/config.ts still match the website?
 ```
 
-Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`; the workflow can also be started by
-hand (Actions → Deploy to GitHub Pages → Run workflow). Before building it runs `scripts/fetch-fjfi.mjs`, which
-reads the years, programs and kruhy from the navigation and tables of contents on rozvrh.fjfi.cvut.cz and copies
-every timetable PDF next to the app (`public/fjfi/` with `manifest.json`). The FJFI site sends no CORS headers, so
-the browser cannot fetch the files from there directly. Nothing about the list is hardcoded: new programs or kruhy
-show up with the next deploy. There is no schedule; the copy is as fresh as the last deploy, so refresh it at the
-start of each semester as described below.
+## Automatic updates and deployment
 
-## Each semester
+GitHub Pages deploys on pushes to `main`, **15 February and 15 September at 04:23 UTC**, and on demand via
+*Actions → Deploy to GitHub Pages → Run workflow*. The two scheduled refreshes pick up semester timetables
+without a commit or a manual checklist. GitHub may delay scheduled runs. If the faculty publishes later than
+the 15th, a manual run refreshes the copy immediately.
 
-The faculty publishes the new timetables before each semester, usually around the **3rd Monday of February**
-(summer semester) and the **4th Monday of September** (winter semester). Once they are up on
-[rozvrh.fjfi.cvut.cz](https://rozvrh.fjfi.cvut.cz/rozvrh/studenti/bs1):
+Every deployment run automatically:
 
-1. **Refresh the timetables on the site.** On GitHub open *Actions → Deploy to GitHub Pages → Run workflow*
-   (branch `main`) and wait for it to finish (about 2–3 minutes). Any push to `main` does the same.
-   - The **build** job's *Run npm run fetch-fjfi* step ends with a line like
-     `5 years, 107 programs, 117 timetables (72.8 MB; …) → public/fjfi/`. If it fails with
-     `… (redesign?)`, the faculty changed the website's layout and `scripts/fjfi-site.mjs` needs adjusting
-     (the parsing is covered by `tests/fjfi-sync.test.ts`; save a fresh page into `tests/fixtures/` to reproduce).
-     The deploy is skipped in that case, so the site keeps the previous copy.
-2. **Check the Obor list.** The **check-programs** job in the same run compares the program codes in
-   `PROGRAMS` (`src/config.ts`) with the bachelor programs on the website. If it fails, its log lists what
-   changed, e.g. `+ XYZ (name) — on the website, missing in the app` or `- XYZ — in the app, no longer on the
-   website`. Add or remove those entries in `PROGRAMS` (keep them sorted by name) and commit; `npm run
-   check-programs` runs the same check locally.
-3. **Refresh lecturers and rooms** used to correct OCR: run `npm run update-names`, check the diff of
-   `src/import/known-names.ts`, then run `npm test` and commit.
-4. **Spot-check the app:** *Importovat → Z webu FJFI…* should say "Seznam převzat z webu FJFI <today's date>",
-   and importing your own timetable should work.
+1. Discovers the **bachelor’s and master’s year pages** from the FJFI navigation and mirrors their timetable
+   PDFs into `public/fjfi/`, with a `manifest.json`. Děčín, teacher training and language pages are skipped.
+   The browser loads this copy because the faculty website does not allow cross-origin downloads.
+   Cached PDFs use conditional requests, so unchanged files need not be downloaded again.
+2. Refreshes the manual editor’s bachelor **Obor** choices from the same manifest, including new, renamed
+   and removed programs. The web import dialog lists both bachelor’s and master’s timetables.
+3. Refreshes lecturer names and room codes used to correct OCR.
+4. Runs the tests and production build, then publishes the result. The Pages asset path follows the
+   repository name automatically.
+
+Program and OCR metadata are generated in the runner before building; they do not create bot commits or
+maintenance PRs. The checked-in lists remain usable for local development without network access.
+`npm run sync-fjfi` refreshes timetables and bachelor choices locally; `npm run update-names` refreshes OCR
+metadata. `npm run check-programs` is an optional diagnostic for comparing local choices with the website.
+
+On the first day of each month, a separate schedule in the same workflow **only renews the workflow via the
+GitHub API** to prevent the 60-day public-repository inactivity shutdown. It skips the timetable fetch,
+build and deployment. No personal token, external scheduler or dummy commits are needed. The existing
+`github-pages` environment allows deployments from `main` without a reviewer’s approval.
+
+Network requests have timeouts and retries. If FJFI is unavailable, a timetable is broken, parsing finds no
+usable data, or a test/build fails, the deployment stops and **the existing live site stays available**. The
+next semester refresh, push to `main` or manual run tries again. A faculty website redesign can require a
+parser fix; the failed Actions run contains the error. Workflows do not cancel a deployment that is already running.
 
 ## Licence
 

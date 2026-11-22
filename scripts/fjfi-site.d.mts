@@ -40,6 +40,7 @@ export interface BuiltYear {
 
 export declare function decodeText(s: string): string;
 export declare function parseNav(html: string): NavPage[];
+export declare function isDegreeYear(title: string): boolean;
 export declare function shortYearLabel(title: string): string;
 export declare function parsePage(html: string): PageEntry[];
 export declare function splitId(id: string): { prefix: string; code: string; digits: string } | null;

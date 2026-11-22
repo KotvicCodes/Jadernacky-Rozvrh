@@ -42,6 +42,12 @@ export function parseNav(html) {
 /** "Rozvrh 1. ročníku bakalářského studia" → "1. ročník Bc." (falls back to the title without "Rozvrh"). */
 const YEAR_TITLE = /(\d+)\.\s*ročník\S*\s+(bakalářsk|navazující\S*\s+magistersk|magistersk|doktorsk)/i;
 
+/** Bachelor/master year pages only; auxiliary pages cannot affect the mirror. */
+export function isDegreeYear(title) {
+  const match = YEAR_TITLE.exec(title);
+  return !!match && !match[2].toLowerCase().startsWith('doktorsk');
+}
+
 export function shortYearLabel(title) {
   const m = YEAR_TITLE.exec(title);
   if (m) {
@@ -219,7 +225,7 @@ export function configProgramCodes(source) {
   if (start < 0) throw new Error('PROGRAMS not found in src/config.ts');
   const end = source.indexOf('];', start);
   const block = source.slice(start, end < 0 ? undefined : end);
-  return [...block.matchAll(/\bcode:\s*'([^']+)'/g)].map((m) => m[1]).sort();
+  return [...block.matchAll(/\bcode:\s*['"]([^'"]+)['"]/g)].map((m) => m[1]).sort();
 }
 
 /** Differences between the app's program codes and the website's. */

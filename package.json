@@ -10,7 +10,8 @@
     "test": "vitest run",
     "update-names": "node scripts/update-known-names.mjs",
     "fetch-fjfi": "node scripts/fetch-fjfi.mjs",
-    "check-programs": "node scripts/fetch-fjfi.mjs --check-programs"
+    "check-programs": "node scripts/fetch-fjfi.mjs --check-programs",
+    "sync-fjfi": "node scripts/fetch-fjfi.mjs --update-programs"
   },
   "license": "MIT",
   "type": "module",
