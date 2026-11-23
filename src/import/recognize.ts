@@ -66,7 +66,7 @@ export function pickCourseReading(readings: OcrResult[], department?: string, ma
 export function cleanTitle(text: string): string {
   const t = text.replace(/\s+/g, '').replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}.)]+$/gu, '');
   // Exercise codes end in "cv" (cvičení), which OCR often misreads.
-  return t.replace(/^([A-Z0-9.]{2,})(?:c[vyw]|e[vyw]|o[vyw]|a[vyw]|iew|CV|CY)$/, '$1cv');
+  return t.replace(/^([A-Za-z0-9.]{2,})(?:[ceoa][vVyYwW]|i[eE][wW]|CV|CY)$/, '$1cv');
 }
 
 /** Cleans OCR output for a lecturer name; "--" means none. */

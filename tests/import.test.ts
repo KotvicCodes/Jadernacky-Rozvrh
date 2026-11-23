@@ -172,6 +172,10 @@ describe('OCR clean-up', () => {
     expect(cleanTitle('LALey')).toBe('LALcv');
     expect(cleanTitle('MANCY')).toBe('MANcv');
     expect(cleanTitle('AMScv')).toBe('AMScv');
+    expect(cleanTitle('FANA1cY')).toBe('FANA1cv');
+    expect(cleanTitle('FANAlov')).toBe('FANAlcv');
+    expect(cleanTitle('FANAlcy')).toBe('FANAlcv');
+    expect(cleanTitle('BIOW')).toBe('BIOW'); // Upper-case course letters are not suffix errors.
     expect(cleanRoom('8-103')).toBe('B-103');
     expect(cleanRoom('1-201')).toBe('T-201');
     expect(cleanRoom('klff-121')).toBe('KLFF-121');

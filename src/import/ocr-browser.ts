@@ -38,8 +38,17 @@ export async function createBrowserOcr(): Promise<BrowserOcr> {
       canvas.width = image.width;
       canvas.height = image.height;
       ctx.putImageData(new ImageData(new Uint8ClampedArray(image.data), image.width, image.height), 0, 0);
-      const { data } = await worker.recognize(canvas);
-      return { text: data.text, confidence: data.confidence };
+      const first = (await worker.recognize(canvas)).data;
+      if (kind !== 'title' || first.text.trim()) return { text: first.text, confidence: first.confidence };
+      // Bold, tightly spaced course labels can be rejected as a single line.
+      // Retry only empty titles as a single word; blank metadata stays blank.
+      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_WORD });
+      try {
+        const { data } = await worker.recognize(canvas);
+        return { text: data.text, confidence: data.confidence };
+      } finally {
+        await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE });
+      }
     },
     async close() {
       await worker.terminate();

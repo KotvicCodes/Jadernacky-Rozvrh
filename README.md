@@ -33,10 +33,14 @@ download it as a PDF.
     [ČVUT catalogue](https://bilakniha.cvut.cz/cs/f4-predmety.html) (`src/import/known-courses.ts`). The
     department prefix is mapped to the timetable abbreviation, such as `01MAN` → `MAN`. For an unknown
     reading of at least four characters, a unique match within one letter edit in the lesson's colour-coded
-    department can bring different OCR passes into agreement. A valid winning reading is kept; numbers,
-    separators and suffixes such as `cv` and `.rez` are preserved. Short, unknown or ambiguous codes stay
-    as read. This does not guess aliases for generic labels such as `JAZ.2`.
+    department can bring different OCR passes into agreement. Up to two visual letter/digit confusions
+    are also supported for codes of at least three characters (`S081` → `SOS1`, `CHicv` → `CH1cv`). A
+    valid winning reading is kept; one digit is never replaced with another, and separators and suffixes
+    such as `cv` and `.rez` are preserved. Short, unknown or ambiguous codes stay as read. This does not
+    guess aliases for generic labels such as `JAZ.2`.
   - pdf.js and the OCR engine (~4 MB, from a CDN) load only when an import needs them.
+    If single-line recognition returns no title, OCR retries that crop as a single word. Empty lecturer
+    and room fields are not retried. Mixed-case exercise suffix misreads such as `FANA1cY` are normalized.
 - Several schedules (e.g. one per semester) are kept side by side as tabs: click a tab to switch, double-click it (or press F2) to rename it, `+` adds a new one. Everything is saved in the browser (`localStorage`).
 
 Built with plain TypeScript and [Vite](https://vite.dev); no UI framework.

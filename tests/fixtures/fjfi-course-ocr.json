@@ -1,0 +1,178 @@
+[
+  {
+    "id": "Bc2MI_MM1",
+    "day": 3,
+    "start": 14,
+    "department": "01",
+    "expected": "SOS1",
+    "readings": [
+      {
+        "text": "0\n",
+        "confidence": 88
+      },
+      {
+        "text": "S081\n",
+        "confidence": 72
+      },
+      {
+        "text": "S081\n",
+        "confidence": 82
+      },
+      {
+        "text": "S0s1\n",
+        "confidence": 31
+      }
+    ],
+    "originalReadings": [
+      {
+        "text": "0\n",
+        "confidence": 88
+      },
+      {
+        "text": "S081\n",
+        "confidence": 72
+      },
+      {
+        "text": "S081\n",
+        "confidence": 82
+      },
+      {
+        "text": "S0s1\n",
+        "confidence": 31
+      }
+    ],
+    "source": "https://rozvrh.fjfi.cvut.cz/uploads/rozvrh/pdf/parts/Bc2MI_MM1.pdf"
+  },
+  {
+    "id": "Bc1MI_MM1",
+    "day": 0,
+    "start": 18,
+    "department": "15",
+    "expected": "CH1cv",
+    "readings": [
+      {
+        "text": "",
+        "confidence": 0
+      },
+      {
+        "text": "CHicv\n",
+        "confidence": 0
+      },
+      {
+        "text": "CHiov\n",
+        "confidence": 52
+      },
+      {
+        "text": "",
+        "confidence": 0
+      }
+    ],
+    "originalReadings": [
+      {
+        "text": "",
+        "confidence": 0
+      },
+      {
+        "text": "CHicv\n",
+        "confidence": 0
+      },
+      {
+        "text": "",
+        "confidence": 0
+      },
+      {
+        "text": "",
+        "confidence": 0
+      }
+    ],
+    "source": "https://rozvrh.fjfi.cvut.cz/uploads/rozvrh/pdf/parts/Bc1MI_MM1.pdf"
+  },
+  {
+    "id": "Bc3MI_MM1",
+    "day": 2,
+    "start": 12,
+    "department": "01",
+    "expected": "FANA1cv",
+    "readings": [
+      {
+        "text": "FANAlcY\n",
+        "confidence": 0
+      },
+      {
+        "text": "FANA1cv\n",
+        "confidence": 50
+      },
+      {
+        "text": "FANA1cv\n",
+        "confidence": 47
+      },
+      {
+        "text": "FANA1cv\n",
+        "confidence": 86
+      }
+    ],
+    "originalReadings": [
+      {
+        "text": "",
+        "confidence": 0
+      },
+      {
+        "text": "",
+        "confidence": 0
+      },
+      {
+        "text": "",
+        "confidence": 0
+      },
+      {
+        "text": "",
+        "confidence": 0
+      }
+    ],
+    "source": "https://rozvrh.fjfi.cvut.cz/uploads/rozvrh/pdf/parts/Bc3MI_MM1.pdf"
+  },
+  {
+    "id": "Bc2AIPV1",
+    "day": 0,
+    "start": 14,
+    "department": "18",
+    "expected": "MAK2",
+    "readings": [
+      {
+        "text": "MAKZ\n",
+        "confidence": 0
+      },
+      {
+        "text": "MAK2\n",
+        "confidence": 78
+      },
+      {
+        "text": "MAK2\n",
+        "confidence": 89
+      },
+      {
+        "text": "MAK2\n",
+        "confidence": 91
+      }
+    ],
+    "originalReadings": [
+      {
+        "text": "",
+        "confidence": 0
+      },
+      {
+        "text": "",
+        "confidence": 0
+      },
+      {
+        "text": "",
+        "confidence": 0
+      },
+      {
+        "text": "",
+        "confidence": 0
+      }
+    ],
+    "source": "https://rozvrh.fjfi.cvut.cz/uploads/rozvrh/pdf/parts/Bc2AIPV1.pdf"
+  }
+]

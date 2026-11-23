@@ -3,9 +3,17 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseCourseCatalogue } from '../scripts/fjfi-metadata.mjs';
 import { createCourseMatcher } from '../src/import/courses';
-import { pickCourseReading } from '../src/import/recognize';
+import { cleanTitle, pickCourseReading, type OcrResult } from '../src/import/recognize';
 
 const html = readFileSync(join(process.cwd(), 'tests/fixtures/fjfi-courses.html'), 'utf8');
+// Actual Tesseract.js 7 English readings of the reported blocks, rendered from
+// the official PDFs at the app's 3200px width on 2026-11-23. No network in CI.
+const reported = JSON.parse(readFileSync(join(process.cwd(), 'tests/fixtures/fjfi-course-ocr.json'), 'utf8')) as Array<{
+  id: string;
+  department: string;
+  expected: string;
+  readings: OcrResult[];
+}>;
 
 describe('official course dictionary', () => {
   it('takes unique regular courses offered in the catalogue academic year', () => {
@@ -67,6 +75,23 @@ describe('conservative course matching', () => {
     expect(ambiguous.snap('MECQcv', '02')).toBe('MECQcv');
   });
 
+  it('corrects the real S081 and CHicv misreads using unique visual matches', () => {
+    const actual = createCourseMatcher(['01SOS1', '01SOS2', '15CH1', '15CH2']);
+    expect(actual.snap('S081', '01')).toBe('SOS1');
+    expect(actual.snap('CHicv', '15')).toBe('CH1cv');
+    expect(actual.snap('S082', '01')).toBe('SOS2');
+    expect(actual.snap('CHicv', '01')).toBe('CHicv');
+    expect(actual.snap('SOS2', '01')).toBe('SOS2');
+    expect(actual.snap('CH3cv', '15')).toBe('CH3cv');
+  });
+
+  it('refuses ambiguous or excessive glyph substitutions and preserves valid codes', () => {
+    const actual = createCourseMatcher(['01SOS1', '01SOB1', '01SOS2', '15CH1', '15CHI']);
+    expect(actual.snap('S081', '01')).toBe('S081'); // SOS1 and SOB1 tie.
+    expect(actual.snap('S08I', '01')).toBe('S08I'); // Three glyph substitutions.
+    expect(actual.snap('CHicv', '15')).toBe('CHIcv'); // CHI is valid in this dictionary.
+  });
+
   it('recognizes aliases, full codes and exercise/reservation suffixes', () => {
     expect(matcher.isKnown('MANcv', '01')).toBe(true);
     expect(matcher.isKnown('MAN.rez')).toBe(true);
@@ -91,5 +116,11 @@ describe('conservative course matching', () => {
       { text: 'MEGH', confidence: 85 },
       { text: 'MECH', confidence: 70 },
     ], '02', matcher)).toBe('MECL');
+  });
+
+  it.each(reported)('recovers $expected from the actual $id OCR readings', ({ department, expected, readings }) => {
+    const actual = createCourseMatcher(['01SOS1', '01SOS2', '15CH1', '15CH2', '01FANA1', '01FAN2', '01FAN3', '18MAK1', '18MAK2']);
+    const cleaned = readings.map((reading) => ({ ...reading, text: cleanTitle(reading.text) }));
+    expect(pickCourseReading(cleaned, department, actual)).toBe(expected);
   });
 });
