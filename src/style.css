@@ -30,7 +30,7 @@ body { margin: 0; background: var(--bg); }
 .topbar-credit:hover, .topbar-credit:focus-visible { opacity: 1; text-decoration: underline; }
 .topbar-credit:focus-visible { outline-color: #fff; }
 
-.container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+.container { width: 100%; min-width: 0; max-width: 1200px; margin: 0 auto; padding: 1rem; }
 
 /* Tabs: one per timetable (double click renames) */
 .tabs {
@@ -71,6 +71,10 @@ body { margin: 0; background: var(--bg); }
   border-bottom: 1px solid var(--bg);
 }
 .tab-add { padding-inline: 0.7rem; font-weight: 600; }
+.tab[role='tab'] { touch-action: pinch-zoom; -webkit-touch-callout: none; }
+.tab--dragging { opacity: 0.45; }
+.tab--drop-before { box-shadow: inset 3px 0 var(--brand); }
+.tab--drop-after { box-shadow: inset -3px 0 var(--brand); }
 /* While renaming, the field looks like the active tab (no focus ring). */
 input.tab-input,
 input.tab-input:focus-visible {
@@ -93,7 +97,7 @@ input.tab-input:focus-visible {
   align-items: flex-end;
   gap: 0.5rem 0.75rem;
 }
-.toolbar-field { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; color: var(--muted); }
+.toolbar-field { display: flex; min-width: 0; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; color: var(--muted); }
 .toolbar-field select,
 .toolbar-field input { min-width: 11rem; max-width: 24rem; }
 .toolbar-field--narrow select { min-width: 4.5rem; }
@@ -135,7 +139,7 @@ input.tab-input:focus-visible {
 }
 .menu-item:hover, .menu-item:focus-visible { background: #eef6fc; color: var(--brand); outline: none; }
 /* Space between the buttons and the timetable. */
-.board-host { margin-top: 2.25rem; }
+.board-host { margin-top: 2.25rem; min-width: 0; }
 .status { min-height: 1.2em; color: var(--muted); font-size: 0.85rem; }
 .site-footer { max-width: 1200px; margin: 0 auto; padding: 0 1rem 1.5rem; font-size: 0.85rem; }
 .site-footer a { color: var(--muted); }
@@ -181,7 +185,8 @@ input:focus-visible, select:focus-visible, button:focus-visible {
 
 /* Board — mirrors the official timetable: days as rows, hours as columns */
 /* Hour cells are square (hour width ≈ row height), like the official images. */
-.board-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; max-width: 938px; }
+.board-scroll { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; max-width: 938px; scrollbar-width: thin; }
+.board-scroll:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 /* The right padding leaves room for the "20:00" label centred on the last line. */
 .board { min-width: 756px; max-width: 936px; padding: 0.5rem 2.25rem 0.75rem 0.5rem; font-family: Arial, Helvetica, sans-serif; }
 .board-head { display: grid; grid-template-columns: var(--label-w) 1fr; height: 32px; align-items: center; }
@@ -231,6 +236,7 @@ input.corner-input { width: 100%; margin-left: -4px; padding: 2px 4px; font: inh
   position: absolute;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   padding: 0;
   margin: 0;
   border: 2px solid var(--border);
@@ -241,7 +247,7 @@ input.corner-input { width: 100%; margin-left: -4px; padding: 2px 4px; font: inh
   text-align: center;
   background-clip: padding-box;
 }
-.lesson { touch-action: none; user-select: none; }
+.lesson { touch-action: pinch-zoom; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .lesson--dragging { z-index: 5; opacity: 0.85; pointer-events: none; cursor: grabbing; box-shadow: 0 6px 16px rgb(0 0 0 / 0.3); }
 .drop-preview {
   position: absolute;
@@ -297,6 +303,9 @@ html:has(dialog[open]) { overflow: hidden; }
   border-radius: 10px;
   padding: 0;
   width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: 0 20px 50px rgb(0 0 0 / 0.3);
 }
 .lesson-dialog::backdrop { background: rgb(15 23 42 / 0.45); }
@@ -307,7 +316,7 @@ fieldset.field { border: 0; padding: 0; margin: 0; }
 fieldset.field legend { padding: 0; margin-bottom: 0.25rem; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 .field-row--3 { grid-template-columns: 1.4fr 1fr 1fr; }
-.dialog-actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.25rem; }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.25rem; }
 
 .swatches { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .swatch { position: relative; cursor: pointer; }
@@ -330,6 +339,10 @@ fieldset.field legend { padding: 0; margin-bottom: 0.25rem; }
 .swatch input:focus-visible + .swatch-chip { outline: 2px solid var(--brand); outline-offset: 3px; }
 
 @media (max-width: 600px) {
+  .topbar { flex-wrap: wrap; }
+  .toolbar-field select, .toolbar-field input { max-width: 100%; }
+  .board { --label-w: 64px; }
+  .corner { padding-right: 0.5rem; }
   .field-row, .field-row--3 { grid-template-columns: 1fr; }
   .toolbar-field select, .toolbar-field input { min-width: 0; width: 100%; }
   .toolbar-field { flex: 1 1 45%; }

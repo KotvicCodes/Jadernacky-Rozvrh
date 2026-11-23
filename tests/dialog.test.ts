@@ -54,4 +54,19 @@ describe('lesson dialog', () => {
     dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 20, clientY: 20 }));
     expect(dialog.open).toBe(true);
   });
+
+  it('rejects a subject consisting only of spaces and saves once corrected', async () => {
+    const result = openLessonDialog(draft);
+    const subject = document.querySelector<HTMLInputElement>('input[name="subject"]')!;
+    const form = document.querySelector<HTMLFormElement>('dialog form')!;
+    subject.value = '   ';
+    subject.dispatchEvent(new Event('input'));
+    form.requestSubmit();
+    expect(document.querySelector('dialog')!.open).toBe(true);
+    expect(subject.validity.customError).toBe(true);
+    subject.value = 'MAN';
+    subject.dispatchEvent(new Event('input'));
+    form.requestSubmit();
+    await expect(result).resolves.toMatchObject({ action: 'save', lesson: { subject: 'MAN' } });
+  });
 });

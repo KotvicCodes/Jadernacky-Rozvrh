@@ -1,5 +1,6 @@
 import { DAYS, FIRST_HOUR, HOUR_COUNT, LAST_HOUR, paletteColor } from './config';
 import { h } from './dom';
+import { enablePointerDrag, type DragPoint } from './drag';
 import { startInlineEdit } from './inline-edit';
 import { formatHour, layoutDay, type Lesson, type Schedule } from './model';
 
@@ -38,95 +39,68 @@ export function dropStart(pointerX: number, trackLeft: number, trackWidth: numbe
   return Math.min(LAST_HOUR - duration, Math.max(FIRST_HOUR, hourUnderPointer - grabOffset));
 }
 
-const DRAG_THRESHOLD = 5;
-
-function trackAt(x: number, y: number): HTMLElement | null {
-  for (const el of document.elementsFromPoint(x, y)) {
-    const track = el.closest<HTMLElement>('.track');
-    if (track) return track;
-  }
-  return null;
-}
-
-function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers): void {
-  let origin: { x: number; y: number; grab: number; pointerId: number } | null = null;
-  let dragging = false;
+function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scrollHost: HTMLElement): void {
+  let origin: DragPoint = { x: 0, y: 0 };
+  let grab = 0;
+  let sourceRect: DOMRect;
+  let tx = 0;
+  let ty = 0;
+  let scale = 1;
   let target: { day: number; start: number } | null = null;
   let preview: HTMLElement | null = null;
-  let suppressClick = false;
-
   const cleanup = () => {
     el.classList.remove('lesson--dragging');
     el.style.transform = '';
     preview?.remove();
     preview = null;
-    origin = null;
-    dragging = false;
     target = null;
   };
-
-  el.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    const track = el.closest<HTMLElement>('.track');
-    if (!track) return;
-    const rect = track.getBoundingClientRect();
-    const hourAtPointer = FIRST_HOUR + Math.floor(((e.clientX - rect.left) / rect.width) * HOUR_COUNT);
-    origin = { x: e.clientX, y: e.clientY, grab: Math.max(0, hourAtPointer - lesson.start), pointerId: e.pointerId };
-  });
-
-  el.addEventListener('pointermove', (e) => {
-    if (!origin || e.pointerId !== origin.pointerId) return;
-    const dx = e.clientX - origin.x;
-    const dy = e.clientY - origin.y;
-    if (!dragging) {
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-      dragging = true;
-      el.setPointerCapture(e.pointerId);
+  enablePointerDrag(el, {
+    scrollHost,
+    scrollPage: true,
+    onStart(point) {
+      origin = point;
+      sourceRect = el.getBoundingClientRect();
+      scale = Number(scrollHost.querySelector<HTMLElement>('.board')?.style.zoom) || 1;
+      tx = ty = 0;
+      const rect = el.closest<HTMLElement>('.track')!.getBoundingClientRect();
+      grab = Math.max(0, FIRST_HOUR + Math.floor(((point.x - rect.left) / rect.width) * HOUR_COUNT) - lesson.start);
       el.classList.add('lesson--dragging');
-    }
-    el.style.transform = `translate(${dx}px, ${dy}px)`;
-    const track = trackAt(e.clientX, e.clientY);
-    if (!track) {
-      preview?.remove();
-      preview = null;
-      target = null;
-      return;
-    }
-    const rect = track.getBoundingClientRect();
-    const start = dropStart(e.clientX, rect.left, rect.width, origin.grab, lesson.duration);
-    target = { day: Number(track.dataset.day), start };
-    if (!preview) preview = h('div', { class: 'drop-preview', 'aria-hidden': 'true' });
-    preview.style.left = pct(start - FIRST_HOUR);
-    preview.style.width = pct(lesson.duration);
-    if (preview.parentElement !== track) track.append(preview);
-  });
-
-  el.addEventListener('pointerup', (e) => {
-    if (!origin || e.pointerId !== origin.pointerId) return;
-    if (dragging) {
-      suppressClick = true;
-      const t = target;
-      cleanup();
-      if (t && (t.day !== lesson.day || t.start !== lesson.start)) handlers.onLessonMove(lesson, t.day, t.start);
-    } else {
-      cleanup();
-    }
-  });
-  el.addEventListener('pointercancel', cleanup);
-  el.addEventListener('lostpointercapture', () => {
-    if (dragging) cleanup();
-  });
-
-  el.addEventListener(
-    'click',
-    (e) => {
-      if (suppressClick) {
-        suppressClick = false;
-        e.stopImmediatePropagation();
-      }
     },
-    true,
-  );
+    onMove(point) {
+      const current = el.getBoundingClientRect();
+      tx = (point.x - origin.x + sourceRect.left - (current.left - tx * scale)) / scale;
+      ty = (point.y - origin.y + sourceRect.top - (current.top - ty * scale)) / scale;
+      el.style.transform = `translate(${tx}px, ${ty}px)`;
+      // Restrict hit testing to this timetable and ignore the floating lesson.
+      const track = [...scrollHost.querySelectorAll<HTMLElement>('.track')].find((track) => {
+        const r = track.getBoundingClientRect();
+        const visible = scrollHost.getBoundingClientRect();
+        const labelRight = track.previousElementSibling?.getBoundingClientRect().right ?? r.left;
+        return point.x >= Math.max(r.left, visible.left, labelRight) && point.x <= Math.min(r.right, visible.right)
+          && point.y >= r.top && point.y < r.bottom;
+      });
+      if (!track) {
+        preview?.remove();
+        preview = null;
+        target = null;
+        return;
+      }
+      const rect = track.getBoundingClientRect();
+      const start = dropStart(point.x, rect.left, rect.width, grab, lesson.duration);
+      target = { day: Number(track.dataset.day), start };
+      if (!preview) preview = h('div', { class: 'drop-preview', 'aria-hidden': 'true' });
+      preview.style.left = pct(start - FIRST_HOUR);
+      preview.style.width = pct(lesson.duration);
+      if (preview.parentElement !== track) track.append(preview);
+    },
+    onEnd() {
+      const moved = target;
+      cleanup();
+      if (moved && (moved.day !== lesson.day || moved.start !== lesson.start)) handlers.onLessonMove(lesson, moved.day, moved.start);
+    },
+    onCancel: cleanup,
+  });
 
   // Keyboard alternative: Alt+←/→ moves by an hour, Alt+↑/↓ by a day.
   el.addEventListener('keydown', (e) => {
@@ -141,7 +115,7 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers): vo
   });
 }
 
-function renderLesson(lesson: Lesson, lane: number, lanes: number, handlers: GridHandlers): HTMLElement {
+function renderLesson(lesson: Lesson, lane: number, lanes: number, handlers: GridHandlers, scrollHost: HTMLElement): HTMLElement {
   const color = paletteColor(lesson.color);
   const el = h(
     'button',
@@ -169,7 +143,7 @@ function renderLesson(lesson: Lesson, lane: number, lanes: number, handlers: Gri
       h('span', { class: 'lesson-room' }, lesson.room),
     ),
   );
-  enableDrag(el, lesson, handlers);
+  enableDrag(el, lesson, handlers, scrollHost);
   el.addEventListener('click', () => handlers.onLessonClick(lesson));
   return el;
 }
@@ -199,6 +173,7 @@ function renderCorner(schedule: Schedule, handlers: GridHandlers): HTMLElement {
 }
 
 export function renderGrid(schedule: Schedule, handlers: GridHandlers): HTMLElement {
+  const scrollHost = h('div', { class: 'board-scroll', tabindex: 0, role: 'region', 'aria-label': 'Týdenní rozvrh' });
   const hourLabels: HTMLElement[] = [];
   for (let hour = FIRST_HOUR; hour <= LAST_HOUR; hour++) {
     hourLabels.push(h('span', { class: 'hour-label', style: `left:${pct(hour - FIRST_HOUR)}` }, formatHour(hour)));
@@ -236,7 +211,7 @@ export function renderGrid(schedule: Schedule, handlers: GridHandlers): HTMLElem
       slot.addEventListener('click', () => handlers.onSlotClick(day, hour));
       track.append(slot);
     }
-    for (const p of placed) track.append(renderLesson(p.lesson, p.lane, p.lanes, handlers));
+    for (const p of placed) track.append(renderLesson(p.lesson, p.lane, p.lanes, handlers, scrollHost));
 
     board.append(
       h(
@@ -248,5 +223,6 @@ export function renderGrid(schedule: Schedule, handlers: GridHandlers): HTMLElem
     );
   });
 
-  return h('div', { class: 'board-scroll' }, board);
+  scrollHost.append(board);
+  return scrollHost;
 }

@@ -38,6 +38,9 @@ function canvasRgb(canvas: HTMLCanvasElement): Uint8Array {
 }
 
 export async function schedulePdf(schedule: Schedule): Promise<Uint8Array> {
+  // Rendering and compression are asynchronous. Keep the image and embedded
+  // timetable consistent if a lesson is edited before the download finishes.
+  schedule = structuredClone(schedule);
   const canvas = renderToCanvas(schedule, PDF_SCALE);
   return buildPdf(
     { width: canvas.width, height: canvas.height, deflated: await deflate(canvasRgb(canvas)) },
@@ -46,6 +49,7 @@ export async function schedulePdf(schedule: Schedule): Promise<Uint8Array> {
 }
 
 export async function schedulePng(schedule: Schedule): Promise<Uint8Array> {
+  schedule = structuredClone(schedule);
   const canvas = renderToCanvas(schedule, PNG_SCALE);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('PNG se nepodařilo vytvořit.');
@@ -53,9 +57,11 @@ export async function schedulePng(schedule: Schedule): Promise<Uint8Array> {
 }
 
 export async function downloadPdf(schedule: Schedule): Promise<void> {
-  download(await schedulePdf(schedule), 'application/pdf', exportFileName(schedule, 'pdf'));
+  const name = exportFileName(schedule, 'pdf');
+  download(await schedulePdf(schedule), 'application/pdf', name);
 }
 
 export async function downloadPng(schedule: Schedule): Promise<void> {
-  download(await schedulePng(schedule), 'image/png', exportFileName(schedule, 'png'));
+  const name = exportFileName(schedule, 'png');
+  download(await schedulePng(schedule), 'image/png', name);
 }

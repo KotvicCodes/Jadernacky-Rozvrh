@@ -1,6 +1,7 @@
 import { DEFAULT_COLOR_ID, KRUH_OPTIONS, PROGRAMS, canonicalSpecId, formatSpecId, parseSpecId } from './config';
 import { openLessonDialog } from './dialog';
 import { h } from './dom';
+import { enablePointerDrag } from './drag';
 import { downloadPdf, downloadPng } from './export';
 import { renderGrid } from './grid';
 import { startInlineEdit } from './inline-edit';
@@ -18,6 +19,7 @@ export class App {
   private readonly tabs = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Rozvrhy' });
   private readonly toolbar = h('div', { class: 'toolbar' });
   private readonly status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+  private readonly boardResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.fitBoard());
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -44,6 +46,7 @@ export class App {
       ),
     );
     this.render();
+    this.boardResizeObserver?.observe(this.boardHost);
     this.listenForFiles();
   }
 
@@ -69,6 +72,9 @@ export class App {
     });
     window.addEventListener('drop', (e) => {
       document.body.classList.remove('drop-target');
+      // Prevent the browser from navigating away and losing unsaved work even
+      // when the dropped file is unsupported.
+      if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
       const file = [...(e.dataTransfer?.files ?? [])].find(isImportable);
       if (!file) return;
       e.preventDefault();
@@ -101,8 +107,8 @@ export class App {
     return this.state.schedules.find((s) => s.id === this.state.activeId) ?? this.state.schedules[0]!;
   }
 
-  private commit(message?: string): void {
-    this.active.updatedAt = Date.now();
+  private commit(message?: string, schedule = this.active): void {
+    schedule.updatedAt = Date.now();
     const ok = saveState(this.state);
     this.status.textContent = ok ? (message ?? '') : 'Rozvrh se nepodařilo uložit v prohlížeči (soukromé okno?).';
     this.render();
@@ -110,6 +116,17 @@ export class App {
 
   /** Last tab click, to spot a double click even if the tab was re-rendered in between. */
   private lastTabClick = { id: '', at: 0 };
+  private closeImportMenu?: () => void;
+
+  private reorderSchedule(id: string, index: number): void {
+    const from = this.state.schedules.findIndex((s) => s.id === id);
+    if (from < 0 || from === index) return;
+    const [schedule] = this.state.schedules.splice(from, 1);
+    this.state.schedules.splice(index, 0, schedule!);
+    this.lastTabClick = { id: '', at: 0 };
+    this.commit('Pořadí rozvrhů uloženo.', schedule);
+    this.tabFor(id)?.focus({ preventScroll: true });
+  }
 
   /** One tab per schedule: click switches, double click (or F2) renames, "+" adds one. */
   private renderTabs(): void {
@@ -125,10 +142,33 @@ export class App {
           'data-schedule-id': s.id,
           'aria-selected': s.id === active.id ? 'true' : 'false',
           tabindex: s.id === active.id ? 0 : -1,
-          title: `${label} – dvojklikem přejmenuješ`,
+          title: `${label} – dvojklikem přejmenuješ, přetažením nebo Alt+šipkou přesuneš`,
+          'aria-keyshortcuts': 'F2 Alt+ArrowLeft Alt+ArrowRight',
         },
         label,
       );
+      let targetIndex = i;
+      const clearDrag = () => {
+        tab.classList.remove('tab--dragging');
+        this.tabs.querySelectorAll('.tab--drop-before, .tab--drop-after').forEach((el) => el.classList.remove('tab--drop-before', 'tab--drop-after'));
+      };
+      enablePointerDrag(tab, {
+        scrollHost: this.tabs,
+        onStart: () => { tab.classList.add('tab--dragging'); this.lastTabClick = { id: '', at: 0 }; },
+        onMove: (point) => {
+          const rect = this.tabs.getBoundingClientRect();
+          clearDrag();
+          tab.classList.add('tab--dragging');
+          targetIndex = i;
+          if (point.y < rect.top - 30 || point.y > rect.bottom + 30) return;
+          const others = [...this.tabs.querySelectorAll<HTMLElement>('[data-schedule-id]')].filter((el) => el !== tab);
+          targetIndex = others.filter((el) => { const r = el.getBoundingClientRect(); return point.x > r.left + r.width / 2; }).length;
+          const marker = others[targetIndex] ?? others.at(-1);
+          marker?.classList.add(targetIndex === others.length ? 'tab--drop-after' : 'tab--drop-before');
+        },
+        onEnd: () => { clearDrag(); this.reorderSchedule(s.id, targetIndex); },
+        onCancel: clearDrag,
+      });
       tab.addEventListener('click', (e) => {
         const now = Date.now();
         const isDouble = e.detail >= 2 || (this.lastTabClick.id === s.id && now - this.lastTabClick.at < 500);
@@ -147,6 +187,10 @@ export class App {
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           e.preventDefault();
           const list = this.state.schedules;
+          if (e.altKey) {
+            this.reorderSchedule(s.id, Math.max(0, Math.min(list.length - 1, i + (e.key === 'ArrowRight' ? 1 : -1))));
+            return;
+          }
           const next = list[(i + (e.key === 'ArrowRight' ? 1 : list.length - 1)) % list.length]!;
           this.state.activeId = next.id;
           saveState(this.state);
@@ -166,6 +210,13 @@ export class App {
     });
 
     this.tabs.replaceChildren(...tabs, addTab);
+    const selected = this.tabFor(active.id);
+    if (selected) {
+      const rect = selected.getBoundingClientRect();
+      const host = this.tabs.getBoundingClientRect();
+      if (rect.left < host.left) this.tabs.scrollLeft -= host.left - rect.left;
+      else if (rect.right > host.right) this.tabs.scrollLeft += rect.right - host.right;
+    }
   }
 
   private tabFor(id: string): HTMLElement | undefined {
@@ -193,6 +244,7 @@ export class App {
   }
 
   private renderToolbar(): void {
+    this.closeImportMenu?.();
     const active = this.active;
 
     // Obor + kruh build the ID shown on the timetable ("JCF1"). An ID that
@@ -296,6 +348,10 @@ export class App {
       document.removeEventListener('pointerdown', onOutside);
       wrap.removeEventListener('keydown', onKey);
     };
+    this.closeImportMenu = close;
+    wrap.addEventListener('focusout', (e) => {
+      if (!wrap.contains(e.relatedTarget as Node | null)) close();
+    });
     button.addEventListener('click', () => (menu.hidden ? open() : close()));
     fromDevice.addEventListener('click', () => {
       close();
@@ -326,7 +382,19 @@ export class App {
     }
   }
 
+  /** Fit the complete desktop timetable on a phone, keeping its proportions.
+   * Native pinch zoom remains available for reading/editing small lessons. */
+  private fitBoard(): void {
+    const host = this.boardHost.querySelector<HTMLElement>('.board-scroll');
+    const board = host?.querySelector<HTMLElement>('.board');
+    if (!host || !board || host.clientWidth === 0) return;
+    const fits = host.clientWidth < 756;
+    board.style.width = fits ? '756px' : '';
+    board.style.zoom = fits ? String(host.clientWidth / 756) : '';
+  }
+
   private render(): void {
+    const scrollLeft = this.boardHost.querySelector('.board-scroll')?.scrollLeft ?? 0;
     this.renderTabs();
     this.renderToolbar();
     this.boardHost.replaceChildren(
@@ -340,6 +408,9 @@ export class App {
         },
       }),
     );
+    this.fitBoard();
+    const scroller = this.boardHost.querySelector('.board-scroll');
+    if (scroller) scroller.scrollLeft = scrollLeft;
   }
 
   private moveLesson(lesson: Lesson, day: number, start: number): void {
@@ -363,23 +434,25 @@ export class App {
   }
 
   private async addLesson(day: number, hour: number): Promise<void> {
+    const schedule = this.active;
     const draft: LessonDraft = { day, start: hour, duration: 2, subject: '', room: '', lecturer: '', color: DEFAULT_COLOR_ID };
     const result = await openLessonDialog(draft);
     if (result.action === 'save') {
-      this.active.lessons.push(result.lesson);
-      this.commit(`Přidáno: ${result.lesson.subject}`);
+      schedule.lessons.push(result.lesson);
+      this.commit(`Přidáno: ${result.lesson.subject}`, schedule);
     }
   }
 
   private async editLesson(lesson: Lesson): Promise<void> {
+    const schedule = this.active;
     const result = await openLessonDialog(lesson, lesson);
-    const lessons = this.active.lessons;
+    const lessons = schedule.lessons;
     if (result.action === 'save') {
-      this.active.lessons = lessons.map((l) => (l.id === result.lesson.id ? result.lesson : l));
-      this.commit(`Upraveno: ${result.lesson.subject}`);
+      schedule.lessons = lessons.map((l) => (l.id === result.lesson.id ? result.lesson : l));
+      this.commit(`Upraveno: ${result.lesson.subject}`, schedule);
     } else if (result.action === 'delete') {
-      this.active.lessons = lessons.filter((l) => l.id !== result.id);
-      this.commit('Hodina smazána.');
+      schedule.lessons = lessons.filter((l) => l.id !== result.id);
+      this.commit('Hodina smazána.', schedule);
     }
   }
 }

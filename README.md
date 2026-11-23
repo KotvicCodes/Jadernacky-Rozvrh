@@ -15,7 +15,7 @@ download it as a PDF.
 - Each schedule belongs to a study program (obor), picked from the published bachelor programs, and a kruh (–, 1, 2 or 3; the same choice for every program, since kruh counts change between years). The timetable shows them like the official one, without the year: `JCF1`, or just `FI_IPL` when the kruh is –.
 - Click the ID in the timetable's top-left corner to type any ID by hand.
 - Overlapping (parallel) lessons are stacked, as on the official timetable.
-- Drag and drop lessons to another day or hour (snaps to whole hours); Alt + arrow keys do the same from the keyboard.
+- Drag and drop lessons to another day or hour (snaps to whole hours); Alt + arrow keys do the same from the keyboard. On touch screens, drag from anywhere on a lesson; pinch to zoom for more detail. Dragging near the edges scrolls automatically when needed.
 - Download as **PDF** (A4 landscape) or **PNG**, drawn like the official timetable.
 - Exports carry the schedule data invisibly (PNG `tEXt` chunk, PDF Info entry), so they can be imported back later.
 - **Import** straight from the FJFI website (Importovat → Z webu FJFI): pick the year (ročník), study program, specialization where offered and, when the program has more than one, the kruh. Timetables are recognized once during deployment; importing downloads a small JSON file without running OCR in the browser. The list is not hardcoded: it is read from rozvrh.fjfi.cvut.cz on every deploy (see [Automatic updates and deployment](#automatic-updates-and-deployment)).
@@ -42,7 +42,8 @@ download it as a PDF.
   - pdf.js and the OCR engine (~4 MB, from a CDN) load only when an import needs them.
     If single-line recognition returns no title, OCR retries that crop as a single word. Empty lecturer
     and room fields are not retried. Mixed-case exercise suffix misreads such as `FANA1cY` are normalized.
-- Several schedules (e.g. one per semester) are kept side by side as tabs: click a tab to switch, double-click it (or press F2) to rename it, `+` adds a new one. Everything is saved in the browser (`localStorage`).
+- Several schedules (e.g. one per semester) are kept side by side as tabs: click a tab to switch, double-click it (or press F2) to rename it, `+` adds a new one. Drag from anywhere on a tab to reorder it, or press Alt + Left/Right. Tab order and timetables are saved in the browser (`localStorage`).
+- On phones, the complete week fits the screen using the desktop timetable proportions and a narrower weekday column. Pinch to zoom for reading or moving small lessons. Lesson/import dialogs scroll to keep all their fields and buttons reachable.
 
 Built with plain TypeScript and [Vite](https://vite.dev); no UI framework.
 
