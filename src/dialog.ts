@@ -17,6 +17,8 @@ export function openLessonDialog(draft: LessonDraft, existing?: Lesson): Promise
     const isEdit = Boolean(existing);
 
     const subject = h('input', { name: 'subject', required: true, maxlength: 80, autocomplete: 'off', value: initial.subject });
+    const validateSubject = () => subject.setCustomValidity(subject.value.trim() ? '' : 'Vyplň název předmětu.');
+    subject.addEventListener('input', validateSubject);
     const room = h('input', { name: 'room', maxlength: 80, autocomplete: 'off', value: initial.room });
     const lecturer = h('input', { name: 'lecturer', maxlength: 80, autocomplete: 'off', value: initial.lecturer });
 
@@ -72,6 +74,7 @@ export function openLessonDialog(draft: LessonDraft, existing?: Lesson): Promise
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();
+      validateSubject();
       if (!form.reportValidity()) return;
       const color = form.querySelector<HTMLInputElement>('input[name="color"]:checked')?.value ?? initial.color;
       result = {

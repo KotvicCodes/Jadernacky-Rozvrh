@@ -69,6 +69,7 @@ describe('timetable tabs', () => {
     typeAndPress(root.querySelector<HTMLInputElement>('input.tab-input')!, 'LS 2027', 'Enter');
     expect(tabs(root)[0]!.textContent).toBe('LS 2027');
   });
+
   it('persists tab order with Alt+arrows while keeping the active schedule', () => {
     root.querySelector<HTMLButtonElement>('.tab-add')!.click();
     root.querySelector<HTMLButtonElement>('.tab-add')!.click();
@@ -88,12 +89,30 @@ describe('timetable tabs', () => {
     expect(tabs(reloaded).map((t) => t.dataset.scheduleId)).toEqual(reordered.schedules.map((s) => s.id));
   });
 
-
   it('keeps the timetable scroll position after a render', () => {
     const scroller = root.querySelector<HTMLElement>('.board-scroll')!;
     scroller.scrollLeft = 300;
     root.querySelector<HTMLButtonElement>('.tab-add')!.click();
     expect(root.querySelector('.board-scroll')!.scrollLeft).toBe(300);
+  });
+});
+
+describe('lesson edits while the active schedule changes', () => {
+  it('saves a lesson into the schedule that opened the dialog', async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')); };
+    const root = setup();
+    const originalId = tabs(root)[0]!.dataset.scheduleId;
+    root.querySelector<HTMLButtonElement>('.slot')!.click();
+    // Simulates an asynchronous file import switching schedules behind a modal.
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    const subject = document.querySelector<HTMLInputElement>('dialog input[name="subject"]')!;
+    subject.value = 'MAN';
+    document.querySelector<HTMLFormElement>('dialog form')!.requestSubmit();
+    await vi.waitFor(() => expect(loadState().schedules[0]!.lessons).toHaveLength(1));
+    const state = loadState();
+    expect(state.schedules.find((s) => s.id === originalId)!.lessons[0]!.subject).toBe('MAN');
+    expect(state.schedules.find((s) => s.id === state.activeId)!.lessons).toEqual([]);
   });
 });
 
@@ -185,5 +204,12 @@ describe('Importovat menu', () => {
     expect([...menu.querySelectorAll('[role="menuitem"]')].map((i) => i.textContent)).toEqual(['Ze zařízení', 'Z webu FJFI']);
     menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(menu.hidden).toBe(true);
+  });
+
+  it('closes the import menu when keyboard focus leaves it', () => {
+    const root = setup();
+    root.querySelector<HTMLButtonElement>('.menu-wrap > .btn')!.click();
+    root.querySelector<HTMLButtonElement>('.btn-danger')!.focus();
+    expect(root.querySelector<HTMLElement>('.menu')!.hidden).toBe(true);
   });
 });

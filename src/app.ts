@@ -72,6 +72,9 @@ export class App {
     });
     window.addEventListener('drop', (e) => {
       document.body.classList.remove('drop-target');
+      // Prevent the browser from navigating away and losing unsaved work even
+      // when the dropped file is unsupported.
+      if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
       const file = [...(e.dataTransfer?.files ?? [])].find(isImportable);
       if (!file) return;
       e.preventDefault();
@@ -113,6 +116,7 @@ export class App {
 
   /** Last tab click, to spot a double click even if the tab was re-rendered in between. */
   private lastTabClick = { id: '', at: 0 };
+  private closeImportMenu?: () => void;
 
   private reorderSchedule(id: string, index: number): void {
     const from = this.state.schedules.findIndex((s) => s.id === id);
@@ -240,6 +244,7 @@ export class App {
   }
 
   private renderToolbar(): void {
+    this.closeImportMenu?.();
     const active = this.active;
 
     // Obor + kruh build the ID shown on the timetable ("JCF1"). An ID that
@@ -343,6 +348,10 @@ export class App {
       document.removeEventListener('pointerdown', onOutside);
       wrap.removeEventListener('keydown', onKey);
     };
+    this.closeImportMenu = close;
+    wrap.addEventListener('focusout', (e) => {
+      if (!wrap.contains(e.relatedTarget as Node | null)) close();
+    });
     button.addEventListener('click', () => (menu.hidden ? open() : close()));
     fromDevice.addEventListener('click', () => {
       close();
@@ -425,23 +434,25 @@ export class App {
   }
 
   private async addLesson(day: number, hour: number): Promise<void> {
+    const schedule = this.active;
     const draft: LessonDraft = { day, start: hour, duration: 2, subject: '', room: '', lecturer: '', color: DEFAULT_COLOR_ID };
     const result = await openLessonDialog(draft);
     if (result.action === 'save') {
-      this.active.lessons.push(result.lesson);
-      this.commit(`Přidáno: ${result.lesson.subject}`);
+      schedule.lessons.push(result.lesson);
+      this.commit(`Přidáno: ${result.lesson.subject}`, schedule);
     }
   }
 
   private async editLesson(lesson: Lesson): Promise<void> {
+    const schedule = this.active;
     const result = await openLessonDialog(lesson, lesson);
-    const lessons = this.active.lessons;
+    const lessons = schedule.lessons;
     if (result.action === 'save') {
-      this.active.lessons = lessons.map((l) => (l.id === result.lesson.id ? result.lesson : l));
-      this.commit(`Upraveno: ${result.lesson.subject}`);
+      schedule.lessons = lessons.map((l) => (l.id === result.lesson.id ? result.lesson : l));
+      this.commit(`Upraveno: ${result.lesson.subject}`, schedule);
     } else if (result.action === 'delete') {
-      this.active.lessons = lessons.filter((l) => l.id !== result.id);
-      this.commit('Hodina smazána.');
+      schedule.lessons = lessons.filter((l) => l.id !== result.id);
+      this.commit('Hodina smazána.', schedule);
     }
   }
 }
