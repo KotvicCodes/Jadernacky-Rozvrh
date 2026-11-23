@@ -214,7 +214,7 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
       'form',
       { method: 'dialog', class: 'lesson-form web-import-form' },
       h('h2', {}, 'Importovat z webu FJFI'),
-      h('p', { class: 'hint' }, 'Vyber oficiální rozvrh z rozvrh.fjfi.cvut.cz. Texty se rozpoznají automaticky, po importu je zkontroluj.'),
+      h('p', { class: 'hint' }, 'Texty se rozpoznají automaticky, po importu je zkontroluj'),
       fields,
       synced,
       status,
@@ -327,7 +327,7 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
         const yearIndex = Math.max(0, loaded.years.findIndex((y) => y.id === last.year));
         yearSelect.replaceChildren(...loaded.years.map((y, i) => h('option', { value: i, selected: i === yearIndex }, y.label)));
         fillPrograms(last.program, last.kruh);
-        synced.textContent = `Seznam převzat z webu FJFI ${formatSyncDate(loaded.generatedAt)}.`;
+        synced.textContent = `Aktualizováno: ${formatSyncDate(loaded.generatedAt)}`;
         synced.hidden = false;
         fields.hidden = false;
         status.textContent = '';
