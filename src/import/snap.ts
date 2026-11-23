@@ -1,4 +1,5 @@
 import { KNOWN_ROOMS, KNOWN_TEACHERS } from './known-names';
+import { normalizeLecturerInitials } from '../lecturer';
 
 /** Lower-case and strip diacritics: "Petříčková" → "petrickova". */
 export function fold(text: string): string {
@@ -53,7 +54,8 @@ const SURNAMES = [...new Set(KNOWN_TEACHERS.map((t) => t.split(' ')[0]!))];
 /**
  * Replaces a misread surname with the closest known teacher's surname, with
  * its proper diacritics ("Petrases" → "Petrásek", "Bree" → "Břeň").
- * Initials are kept. Unknown or ambiguous names are left as read.
+ * Distinct initials are kept; a repeated trailing copy of the leading
+ * initial is removed. Unknown or ambiguous surnames are left as read.
  */
 export function snapLecturer(text: string, surnames: readonly string[] = SURNAMES): string {
   const words = text.split(/\s+/).filter(Boolean);
@@ -62,11 +64,11 @@ export function snapLecturer(text: string, surnames: readonly string[] = SURNAME
   for (let i = 0; i < words.length; i++) {
     if (/^\p{L}{2,}$/u.test(words[i]!) && (index < 0 || words[i]!.length > words[index]!.length)) index = i;
   }
-  if (index < 0) return text;
+  if (index < 0) return normalizeLecturerInitials(text);
   const match = closest(words[index]!, surnames, allowedEdits(words[index]!.length));
-  if (!match) return text;
+  if (!match) return normalizeLecturerInitials(text);
   words[index] = match;
-  return words.join(' ');
+  return normalizeLecturerInitials(words.join(' '));
 }
 
 /**

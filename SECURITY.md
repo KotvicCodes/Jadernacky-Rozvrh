@@ -10,7 +10,8 @@ Jaderňácký Rozvrh is a static web page. There is no server, no account and no
 - **Exports carry your data.** Downloaded PDF/PNG files contain the timetable data invisibly, so they can be imported back later. Anyone you send the file to can read that data, just like the visible timetable.
 - **Network requests:**
   - The page itself is served by [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/about-github-pages#data-collection). Like any web host, GitHub sees the usual request data (such as your IP address) when you open it.
-  - The first time you import an official timetable (an image, or an official PDF, which is read with OCR), the browser downloads the [Tesseract.js](https://github.com/naptha/tesseract.js) text-recognition engine and its English language data (~4 MB) from the [jsDelivr](https://www.jsdelivr.com/terms/privacy-policy-jsdelivr-net) CDN.
+  - Website imports fetch preprocessed timetable JSON from this site; no OCR engine download is needed.
+  - The first time you import an official timetable file from your device (an image or PDF read with OCR), the browser downloads the [Tesseract.js](https://github.com/naptha/tesseract.js) text-recognition engine and its English language data (~4 MB) from the [jsDelivr](https://www.jsdelivr.com/terms/privacy-policy-jsdelivr-net) CDN.
   - Only those library files are fetched. Your timetable or image is not sent.
   - Re-importing the app's own PDF/PNG exports needs no download.
 

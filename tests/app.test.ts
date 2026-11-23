@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app';
 import { loadState } from '../src/storage';
 
@@ -96,7 +96,7 @@ describe('timetable ID in the corner', () => {
 describe('toolbar and header', () => {
   it('has the download, import and delete buttons in that order, and no add button', () => {
     const root = setup();
-    const buttons = [...root.querySelectorAll<HTMLButtonElement>('.toolbar-actions button')].map((b) => b.textContent);
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('.toolbar-actions > button, .toolbar-actions > .menu-wrap > .btn')].map((b) => b.textContent);
     expect(buttons).toEqual(['Stáhnout PNG', 'Stáhnout PDF', 'Importovat', 'Smazat rozvrh']);
   });
 
@@ -112,5 +112,52 @@ describe('toolbar and header', () => {
     expect(bug.textContent).toBe('Našel/našla jsi bug? Oprav ho!');
     expect(bug.href).toBe('https://github.com/KotvicCodes/Jadernacky-Rozvrh');
     expect([credit.rel, bug.rel]).toEqual(['noopener', 'noopener']);
+  });
+});
+
+describe('Importovat menu', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('adds a web timetable directly from JSON with fresh lesson IDs on each import', async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.dispatchEvent(new Event('close')); };
+    const manifest = { version: 2, generatedAt: '2026-11-23T00:00:00Z', years: [{
+      id: 'bs1', label: '1. ročník Bc.', programs: [{ code: 'JCF', name: 'Jaderná a částicová fyzika',
+        kruhs: [{ kruh: null, id: 'Bc1JCF1', file: 'Bc1JCF1-abcd.json' }] }],
+    }] };
+    const fetcher = vi.fn(async (url: URL) => Response.json(String(url).endsWith('manifest.json') ? manifest : {
+      version: 1, id: 'Bc1JCF1', specId: 'JCF', lessons: [{
+        day: 0, start: 8, duration: 2, subject: 'MAN', lecturer: '', room: '', color: 'green',
+      }],
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const root = setup();
+    for (let i = 0; i < 2; i++) {
+      [...root.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent === 'Z webu FJFI')!.click();
+      await vi.waitFor(() => expect(document.querySelector<HTMLButtonElement>('dialog button[type="submit"]')?.disabled).toBe(false));
+      document.querySelector<HTMLFormElement>('dialog form')!.requestSubmit();
+      await vi.waitFor(() => expect(tabs(root)).toHaveLength(i + 2));
+    }
+    const state = loadState();
+    expect(state.schedules.slice(1)).toEqual([expect.objectContaining({ specId: 'JCF', lessons: [expect.objectContaining({ subject: 'MAN' })] }),
+      expect.objectContaining({ specId: 'JCF' })]);
+    expect(state.activeId).toBe(state.schedules[2]!.id);
+    expect(state.schedules[1]!.lessons[0]!.id).not.toBe(state.schedules[2]!.lessons[0]!.id);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(fetcher.mock.calls.every(([url]) => String(url).endsWith('.json'))).toBe(true);
+    expect(document.body.classList.contains('busy')).toBe(false);
+  });
+
+  it('offers import from the device and from the FJFI website', () => {
+    const root = setup();
+    const button = root.querySelector<HTMLButtonElement>('.menu-wrap > .btn')!;
+    const menu = root.querySelector<HTMLElement>('.menu')!;
+    expect(menu.hidden).toBe(true);
+    button.click();
+    expect(menu.hidden).toBe(false);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect([...menu.querySelectorAll('[role="menuitem"]')].map((i) => i.textContent)).toEqual(['Ze zařízení', 'Z webu FJFI']);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(menu.hidden).toBe(true);
   });
 });

@@ -43,6 +43,16 @@ describe('normalizeLesson', () => {
     expect(normalizeLesson({ day: 7 }).day).toBe(4);
     expect(normalizeLesson({ day: -1 }).day).toBe(0);
   });
+
+  it('normalizes duplicate lecturer initials for all lesson views without dropping distinct initials', () => {
+    expect(normalizeLesson({ lecturer: ' P. Novotný P. ' }).lecturer).toBe('P. Novotný');
+    expect(normalizeLesson({ lecturer: 'P. Novotný P P' }).lecturer).toBe('P. Novotný');
+    expect(normalizeLesson({ lecturer: 'P. J. Novotný' }).lecturer).toBe('P. J. Novotný');
+    expect(normalizeLesson({ lecturer: 'P. Novotný J.' }).lecturer).toBe('P. Novotný J.');
+    expect(normalizeLesson({ lecturer: 'Novotný P.' }).lecturer).toBe('Novotný P.');
+    expect(normalizeLesson({ lecturer: 'P. J. P' }).lecturer).toBe('P. J. P');
+    expect(normalizeLesson({ lecturer: 'Pavel Novotný P' }).lecturer).toBe('Pavel Novotný P');
+  });
 });
 
 describe('normalizeSchedule', () => {

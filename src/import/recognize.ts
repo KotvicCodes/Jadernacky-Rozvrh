@@ -1,4 +1,6 @@
 import { normalizeLesson, type Lesson } from '../model';
+import { PALETTE } from '../config';
+import { courseMatcher, type CourseMatcher } from './courses';
 import { detectBlocks, detectGeometry, specIdRect, splitMetaStrip } from './fjfi';
 import { dominantColor, inkBounds, prepareForOcr, type Raster, type Rect } from './raster';
 import { snapLecturer, snapRoom } from './snap';
@@ -53,11 +55,18 @@ export function pickReading(readings: OcrResult[]): string {
   return best;
 }
 
+/** Let nearby readings agree on a known course without overriding a valid winner. */
+export function pickCourseReading(readings: OcrResult[], department?: string, matcher: CourseMatcher = courseMatcher): string {
+  const winner = pickReading(readings);
+  if (matcher.isKnown(winner)) return winner;
+  return pickReading(readings.map((reading) => ({ ...reading, text: matcher.snap(reading.text, department) })));
+}
+
 /** Cleans OCR output for a subject code such as "MAN.rez", "JAZ.3" or "LALcv". */
 export function cleanTitle(text: string): string {
   const t = text.replace(/\s+/g, '').replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}.)]+$/gu, '');
   // Exercise codes end in "cv" (cvičení), which OCR often misreads.
-  return t.replace(/^([A-Z0-9.]{2,})(?:c[vyw]|e[vyw]|o[vyw]|a[vyw]|iew|CV|CY)$/, '$1cv');
+  return t.replace(/^([A-Za-z0-9.]{2,})(?:[ceoa][vVyYwW]|i[eE][wW]|CV|CY)$/, '$1cv');
 }
 
 /** Cleans OCR output for a lecturer name; "--" means none. */
@@ -89,7 +98,7 @@ export async function recognizeOfficial(
   if (!g) return null;
   const blocks = detectBlocks(r, g);
   if (blocks.length === 0) return null;
-  const read = async (rect: Rect | null, kind: TextKind, scales: number[] = META_SCALES): Promise<string> => {
+  const read = async (rect: Rect | null, kind: TextKind, scales: number[] = META_SCALES, department?: string): Promise<string> => {
     if (!rect || rect.w < 2 || rect.h < 2) return '';
     const text = inkBounds(r, rect, Math.max(1, g.s));
     if (!text) return '';
@@ -108,7 +117,7 @@ export async function recognizeOfficial(
       const result = await engine.read(prepareForOcr(r, text, scale / g.s, bg), kind);
       readings.push({ text: clean(result.text), confidence: result.confidence });
     }
-    return pickReading(readings);
+    return kind === 'title' ? pickCourseReading(readings, department) : pickReading(readings);
   };
 
   const total = blocks.length + 1;
@@ -120,7 +129,7 @@ export async function recognizeOfficial(
   for (const b of blocks) {
     const parts = splitMetaStrip(r, b.metaRect, g.s);
     const [subject, lecturer, room] = [
-      cleanTitle(await read(b.titleRect, 'title', TITLE_SCALES)),
+      cleanTitle(await read(b.titleRect, 'title', TITLE_SCALES, PALETTE.find((color) => color.id === b.color)?.code)),
       await read(parts.lecturer, 'lecturer'),
       await read(parts.room, 'room'),
     ];

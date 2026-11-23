@@ -1,6 +1,6 @@
 {
   "name": "jaderka-rozvrh",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Lightweight editor for FJFI (Jaderka) student timetables",
   "scripts": {
     "dev": "vite",
@@ -8,11 +8,17 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "update-names": "node scripts/update-known-names.mjs"
+    "update-names": "node scripts/update-known-names.mjs",
+    "update-courses": "node scripts/update-known-courses.mjs",
+    "fetch-fjfi": "node scripts/fetch-fjfi.mjs",
+    "check-programs": "node scripts/fetch-fjfi.mjs --check-programs",
+    "sync-fjfi": "node scripts/fetch-fjfi.mjs --update-programs",
+    "preprocess-fjfi": "node scripts/preprocess-fjfi.mjs"
   },
   "license": "MIT",
   "type": "module",
   "devDependencies": {
+    "@napi-rs/canvas": "^1.2.0",
     "@types/node": "^26.6.6",
     "@types/pngjs": "^6.0.5",
     "jsdom": "^29.1.1",

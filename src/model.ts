@@ -1,4 +1,5 @@
 import { DAYS, DEFAULT_COLOR_ID, FIRST_HOUR, LAST_HOUR, PALETTE, canonicalSpecId } from './config';
+import { normalizeLecturerInitials } from './lecturer';
 
 export interface Lesson {
   id: string;
@@ -66,7 +67,7 @@ export function normalizeLesson(input: Partial<Lesson> & Record<string, unknown>
     duration,
     subject: cleanText(input.subject),
     room: cleanText(input.room),
-    lecturer: cleanText(input.lecturer),
+    lecturer: normalizeLecturerInitials(cleanText(input.lecturer)),
     color,
   };
 }
