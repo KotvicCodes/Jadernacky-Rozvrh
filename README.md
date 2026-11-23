@@ -28,7 +28,8 @@ download it as a PDF.
   - lecturers and rooms read by OCR are matched against the official lists of teachers and classrooms
     (`src/import/known-names.ts`): a name 1–2 letters off a single known teacher becomes that teacher, with
     proper diacritics. The deployment workflow refreshes the lists automatically; `npm run update-names`
-    does the same locally.
+    does the same locally. Duplicated lecturer initials in faculty labels (`P. Novotný P` → `P. Novotný`)
+    are cleaned during import and when saved timetables are loaded; distinct initials are preserved.
   - course codes are checked against currently offered regular courses in the official
     [ČVUT catalogue](https://bilakniha.cvut.cz/cs/f4-predmety.html) (`src/import/known-courses.ts`). The
     department prefix is mapped to the timetable abbreviation, such as `01MAN` → `MAN`. For an unknown

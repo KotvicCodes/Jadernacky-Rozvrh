@@ -36,9 +36,12 @@ describe('snapLecturer', () => {
     expect(snapLecturer(read)).toBe(expected);
   });
 
-  it('keeps initials and fixes only the surname', () => {
+  it('keeps initials, removes duplicate trailing initials and fixes the surname', () => {
     expect(snapLecturer('I. Jex')).toBe('I. Jex');
-    expect(snapLecturer('P. Novotny P')).toBe('P. Novotný P');
+    expect(snapLecturer('P. Novotny P')).toBe('P. Novotný');
+    expect(snapLecturer('P. Novotny P.')).toBe('P. Novotný');
+    expect(snapLecturer('J. Novotny P')).toBe('J. Novotný P');
+    expect(snapLecturer('Novotny P.')).toBe('Novotný P.');
     expect(snapLecturer('M. Sinor')).toBe('M. Šiňor');
   });
 
