@@ -214,7 +214,7 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
       'form',
       { method: 'dialog', class: 'lesson-form web-import-form' },
       h('h2', {}, 'Importovat z webu FJFI'),
-      h('p', { class: 'hint' }, 'Texty se rozpoznají automaticky, po importu je zkontroluj'),
+      h('p', { class: 'hint' }, 'Web může dělat mírné chyby v rozpoznání textu'),
       fields,
       synced,
       status,

@@ -124,7 +124,7 @@ describe('Importovat menu', () => {
     button.click();
     expect(menu.hidden).toBe(false);
     expect(button.getAttribute('aria-expanded')).toBe('true');
-    expect([...menu.querySelectorAll('[role="menuitem"]')].map((i) => i.textContent)).toEqual(['Ze zařízení…', 'Z webu FJFI…']);
+    expect([...menu.querySelectorAll('[role="menuitem"]')].map((i) => i.textContent)).toEqual(['Ze zařízení', 'Z webu FJFI']);
     menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(menu.hidden).toBe(true);
   });

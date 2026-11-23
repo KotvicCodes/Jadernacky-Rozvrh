@@ -265,8 +265,8 @@ export class App {
   /** "Importovat" opens a small menu: a file from this device, or a timetable straight from the FJFI website. */
   private renderImportMenu(pickFile: () => void): HTMLElement {
     const button = h('button', { type: 'button', class: 'btn btn-menu', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, 'Importovat');
-    const fromDevice = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Ze zařízení…');
-    const fromWeb = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Z webu FJFI…');
+    const fromDevice = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Ze zařízení');
+    const fromWeb = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Z webu FJFI');
     const menu = h('div', { class: 'menu', role: 'menu', hidden: true }, fromDevice, fromWeb);
     const wrap = h('div', { class: 'menu-wrap' }, button, menu);
 

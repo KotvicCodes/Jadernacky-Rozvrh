@@ -18,8 +18,8 @@ download it as a PDF.
 - Drag and drop lessons to another day or hour (snaps to whole hours); Alt + arrow keys do the same from the keyboard.
 - Download as **PDF** (A4 landscape) or **PNG**, drawn like the official timetable.
 - Exports carry the schedule data invisibly (PNG `tEXt` chunk, PDF Info entry), so they can be imported back later.
-- **Import** straight from the FJFI website (Importovat → Z webu FJFI…): pick the year (ročník), study program and, when the program has more than one, the kruh. The list is not hardcoded: it is read from rozvrh.fjfi.cvut.cz on every deploy (see [Each semester](#each-semester)).
-- **Import** a timetable from a file (Importovat → Ze zařízení…), by pasting (Ctrl+V) or by dropping it on the page:
+- **Import** straight from the FJFI website (Importovat → Z webu FJFI): pick the year (ročník), study program, specialization where offered and, when the program has more than one, the kruh. The list is not hardcoded: it is read from rozvrh.fjfi.cvut.cz on every deploy (see [Automatic updates and deployment](#automatic-updates-and-deployment)).
+- **Import** a timetable from a file (Importovat → Ze zařízení), by pasting (Ctrl+V) or by dropping it on the page:
   - our own PDF/PNG exports are restored exactly from the data embedded in them;
   - official PDFs/PNGs from rozvrh.fjfi.cvut.cz (or a screenshot of the whole table) are recognised:
     block positions, lengths, parallel lanes and colours come from the image, and subject, lecturer and room
