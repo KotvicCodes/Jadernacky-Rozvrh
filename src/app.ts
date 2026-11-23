@@ -19,6 +19,7 @@ export class App {
   private readonly tabs = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Rozvrhy' });
   private readonly toolbar = h('div', { class: 'toolbar' });
   private readonly status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+  private readonly boardResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.fitBoard());
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -45,6 +46,7 @@ export class App {
       ),
     );
     this.render();
+    this.boardResizeObserver?.observe(this.boardHost);
     this.listenForFiles();
   }
 
@@ -371,7 +373,19 @@ export class App {
     }
   }
 
+  /** Fit the complete desktop timetable on a phone, keeping its proportions.
+   * Native pinch zoom remains available for reading/editing small lessons. */
+  private fitBoard(): void {
+    const host = this.boardHost.querySelector<HTMLElement>('.board-scroll');
+    const board = host?.querySelector<HTMLElement>('.board');
+    if (!host || !board || host.clientWidth === 0) return;
+    const fits = host.clientWidth < 756;
+    board.style.width = fits ? '756px' : '';
+    board.style.zoom = fits ? String(host.clientWidth / 756) : '';
+  }
+
   private render(): void {
+    const scrollLeft = this.boardHost.querySelector('.board-scroll')?.scrollLeft ?? 0;
     this.renderTabs();
     this.renderToolbar();
     this.boardHost.replaceChildren(
@@ -385,6 +399,9 @@ export class App {
         },
       }),
     );
+    this.fitBoard();
+    const scroller = this.boardHost.querySelector('.board-scroll');
+    if (scroller) scroller.scrollLeft = scrollLeft;
   }
 
   private moveLesson(lesson: Lesson, day: number, start: number): void {

@@ -89,6 +89,12 @@ describe('timetable tabs', () => {
   });
 
 
+  it('keeps the timetable scroll position after a render', () => {
+    const scroller = root.querySelector<HTMLElement>('.board-scroll')!;
+    scroller.scrollLeft = 300;
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    expect(root.querySelector('.board-scroll')!.scrollLeft).toBe(300);
+  });
 });
 
 describe('timetable ID in the corner', () => {

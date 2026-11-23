@@ -43,6 +43,7 @@ download it as a PDF.
     If single-line recognition returns no title, OCR retries that crop as a single word. Empty lecturer
     and room fields are not retried. Mixed-case exercise suffix misreads such as `FANA1cY` are normalized.
 - Several schedules (e.g. one per semester) are kept side by side as tabs: click a tab to switch, double-click it (or press F2) to rename it, `+` adds a new one. Drag from anywhere on a tab to reorder it, or press Alt + Left/Right. Tab order and timetables are saved in the browser (`localStorage`).
+- On phones, the complete week fits the screen using the desktop timetable proportions and a narrower weekday column. Pinch to zoom for reading or moving small lessons. Lesson/import dialogs scroll to keep all their fields and buttons reachable.
 
 Built with plain TypeScript and [Vite](https://vite.dev); no UI framework.
 
