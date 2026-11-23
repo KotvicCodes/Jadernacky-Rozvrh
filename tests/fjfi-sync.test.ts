@@ -288,4 +288,36 @@ describe('pickFjfiTimetable', () => {
     [...document.querySelectorAll('button')].find((b) => b.textContent === 'Zavřít')!.click();
     expect(await picked).toBeNull();
   });
+
+  it('keeps the selected program and kruh when changing degree years with different option orders', async () => {
+    const manifest = sampleManifest();
+    const bachelor = manifest.years[0]!;
+    manifest.years.push({
+      ...bachelor,
+      id: 'nms1',
+      label: '1. ročník NMS',
+      prefix: 'Ing1',
+      programs: [...bachelor.programs].reverse().map((program) => ({
+        ...program,
+        // The second kruh has a different index here than in the bachelor year.
+        kruhs: program.kruhs.filter((k) => program.code !== 'JCF' || k.kruh !== 1).map((k) => ({
+          ...k,
+          id: k.id.replace('Bc1', 'Ing1'),
+          file: k.file.replace('Bc1', 'Ing1'),
+        })),
+      })),
+    });
+    stubFetch(manifest);
+    const picked = pickFjfiTimetable();
+    await flush();
+    change('program', 'Jaderná a částicová fyzika');
+    change('kruh', '2. kruh');
+    for (const year of ['1. ročník NMS', '1. ročník Bc.', '1. ročník NMS']) {
+      change('year', year);
+      expect(select('program').selectedOptions[0]!.textContent).toBe('Jaderná a částicová fyzika');
+      expect(select('kruh').selectedOptions[0]!.textContent).toBe('2. kruh');
+    }
+    document.querySelector('form')!.requestSubmit();
+    expect(await picked).toMatchObject({ fileName: 'Ing1JCF2.pdf', shortLabel: '1. ročník NMS – JCF2' });
+  });
 });

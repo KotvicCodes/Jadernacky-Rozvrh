@@ -14,7 +14,7 @@ const BASE = 'https://rozvrh.fjfi.cvut.cz';
 const DEPARTMENTS = ['km', 'kf', 'khvj', 'kipl', 'klff', 'kmat', 'kjch', 'kdaiz', 'kjr', 'ksi'];
 
 async function page(path) {
-  return (await get(BASE + path)).text();
+  return (await get(BASE + path)).data.toString('utf8');
 }
 
 const teachers = new Set();

@@ -38,7 +38,7 @@ const updatePrograms = process.argv.includes('--update-programs');
 class FatalError extends Error {}
 
 async function text(url) {
-  return (await get(url)).text();
+  return (await get(url)).data.toString('utf8');
 }
 
 async function crawl() {
@@ -118,7 +118,7 @@ async function download(years) {
           Object.assign(k, { size: prev.size, etag: prev.etag ?? null, lastModified: prev.lastModified ?? null });
           unchanged++;
         } else {
-          const data = Buffer.from(await res.arrayBuffer());
+          const data = res.data;
           const ext = k.file.slice(-3);
           if (data.subarray(0, 4).toString('latin1') !== MAGIC[ext]) throw new FatalError(`${k.url}: not a ${ext.toUpperCase()} file`);
           writeFileSync(path, data);

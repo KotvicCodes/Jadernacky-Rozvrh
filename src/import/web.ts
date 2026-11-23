@@ -192,6 +192,10 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
     const dialog = h('dialog', { class: 'lesson-dialog web-import-dialog', 'aria-label': 'Importovat z webu FJFI' }, form);
 
     let manifest: FjfiManifest | null = null;
+    // Keep identities from the displayed choices: indices refer to different
+    // programs/kruhs as soon as a parent select changes.
+    let selectedProgram: string | undefined;
+    let selectedKruh: number | null | undefined;
     const currentYear = () => manifest?.years[Number(yearSelect.value)];
     const currentProgram = () => currentYear()?.programs[Number(programSelect.value)];
     const currentKruh = () => currentProgram()?.kruhs[Number(kruhSelect.value)];
@@ -204,6 +208,8 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
       kruhSelect.replaceChildren(...options.map((o, i) => h('option', { value: o.value, selected: i === index }, o.label)));
       kruhField.hidden = !visible;
       kruhSelect.disabled = !visible;
+      selectedProgram = program.code;
+      selectedKruh = program.kruhs[index]?.kruh;
     };
     const fillPrograms = (wantedCode: string | undefined, wantedKruh: number | null | undefined) => {
       const year = currentYear();
@@ -212,8 +218,11 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
       programSelect.replaceChildren(...year.programs.map((p, i) => h('option', { value: i, selected: i === index }, p.name)));
       fillKruhs(wantedKruh);
     };
-    yearSelect.addEventListener('change', () => fillPrograms(currentProgram()?.code, currentKruh()?.kruh));
-    programSelect.addEventListener('change', () => fillKruhs(currentKruh()?.kruh));
+    yearSelect.addEventListener('change', () => fillPrograms(selectedProgram, selectedKruh));
+    programSelect.addEventListener('change', () => fillKruhs(selectedKruh));
+    kruhSelect.addEventListener('change', () => {
+      selectedKruh = currentKruh()?.kruh;
+    });
 
     const busy = (on: boolean) => {
       for (const el of [yearSelect, programSelect, submitBtn]) el.disabled = on;
