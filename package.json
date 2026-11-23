@@ -1,6 +1,6 @@
 {
   "name": "jaderka-rozvrh",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Lightweight editor for FJFI (Jaderka) student timetables",
   "scripts": {
     "dev": "vite",
