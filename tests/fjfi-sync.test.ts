@@ -165,10 +165,13 @@ describe('automatic metadata refresh', () => {
 
 function sampleManifest() {
   return {
-    version: 1,
+    version: 2,
     generatedAt: '2026-11-21T04:17:00.000Z',
     source: 'https://rozvrh.fjfi.cvut.cz/rozvrh/studenti/',
-    years: buildYears(fakeSite(), pickPdf),
+    years: buildYears(fakeSite(), (entry: PageEntry) => {
+      const pdf = pickPdf(entry);
+      return pdf ? { ...pdf, file: pdf.file.replace(/\.pdf$/, ".json") } : null;
+    }),
   };
 }
 
@@ -181,7 +184,7 @@ describe('manifest', () => {
 
   it('rejects broken manifests', () => {
     expect(() => parseManifest(null)).toThrow();
-    expect(() => parseManifest({ ...sampleManifest(), version: 2 })).toThrow(/verze/);
+    expect(() => parseManifest({ ...sampleManifest(), version: 3 })).toThrow(/verze/);
     expect(() => parseManifest({ ...sampleManifest(), years: [] })).toThrow(/ročník/);
     const bad = sampleManifest();
     bad.years[0]!.programs[0]!.kruhs[0]!.file = '../../evil.html';
@@ -253,7 +256,7 @@ describe('pickFjfiTimetable', () => {
     el.dispatchEvent(new Event('change'));
   };
 
-  function stubFetch(manifest: unknown) {
+  function stubFetch(manifest: ReturnType<typeof sampleManifest> | undefined) {
     const calls: string[] = [];
     vi.stubGlobal(
       'fetch',
@@ -262,13 +265,16 @@ describe('pickFjfiTimetable', () => {
         if (String(url).endsWith('manifest.json')) {
           return manifest === undefined ? new Response('Not found', { status: 404 }) : Response.json(manifest);
         }
-        return new Response('%PDF-1.4 fake', { status: 200 });
+        const program = manifest!.years.flatMap((year) => year.programs).find((program) => program.kruhs.some((kruh) => String(url).endsWith(kruh.file)))!;
+        const kruh = program.kruhs.find((kruh) => String(url).endsWith(kruh.file))!;
+        return Response.json({ version: 1, id: kruh.id, specId: program.code + (program.kruhs.length > 1 ? kruh.kruh : ''),
+          lessons: [{ day: 0, start: 8, duration: 2, subject: 'MAN', lecturer: '', room: '', color: 'green' }] });
       }),
     );
     return calls;
   }
 
-  it('picks a program and kruh and returns the official file', async () => {
+  it('picks a program and kruh and returns a fresh schedule from preprocessed JSON', async () => {
     const calls = stubFetch(sampleManifest());
     const picked = pickFjfiTimetable();
     await flush();
@@ -285,11 +291,11 @@ describe('pickFjfiTimetable', () => {
 
     document.querySelector('form')!.requestSubmit();
     const result = await picked;
-    expect(result).toMatchObject({ fileName: 'Bc1JCF2.pdf', label: '1. ročník Bc. – Jaderná a částicová fyzika, 2. kruh', shortLabel: '1. ročník Bc. – JCF2' });
-    expect(await result!.file.text()).toBe('%PDF-1.4 fake');
+    expect(result).toMatchObject({ schedule: { specId: 'JCF2' }, label: '1. ročník Bc. – Jaderná a částicová fyzika, 2. kruh', shortLabel: '1. ročník Bc. – JCF2' });
+    expect(result!.schedule.lessons).toEqual([expect.objectContaining({ subject: 'MAN', id: expect.any(String) })]);
     expect(calls.map((u) => new URL(u).pathname)).toEqual([
       `${import.meta.env.BASE_URL}fjfi/manifest.json`,
-      `${import.meta.env.BASE_URL}fjfi/Bc1JCF2.pdf`,
+      `${import.meta.env.BASE_URL}fjfi/Bc1JCF2.json`,
     ]);
     expect(document.querySelector('dialog')).toBeNull();
   });
@@ -301,7 +307,7 @@ describe('pickFjfiTimetable', () => {
       code: 'FI_FPTF',
       name: 'Fyzikální inženýrství, spec. Fyzika plazmatu a termojaderné fúze',
       page: 'bs1',
-      kruhs: [1, 2].map((kruh) => ({ kruh, id: `Bc1FI_FPTF${kruh}`, file: `Bc1FI_FPTF${kruh}.pdf`, url: '' })),
+      kruhs: [1, 2].map((kruh) => ({ kruh, id: `Bc1FI_FPTF${kruh}`, file: `Bc1FI_FPTF${kruh}.json`, url: '' })),
     });
     const calls = stubFetch(manifest);
     const picked = pickFjfiTimetable();
@@ -314,8 +320,8 @@ describe('pickFjfiTimetable', () => {
     change('specialization', 'Fyzika plazmatu a termojaderné fúze');
     change('kruh', '2. kruh');
     document.querySelector('form')!.requestSubmit();
-    expect(await picked).toMatchObject({ fileName: 'Bc1FI_FPTF2.pdf', shortLabel: '1. ročník Bc. – FI_FPTF2' });
-    expect(calls.at(-1)).toMatch(/\/fjfi\/Bc1FI_FPTF2\.pdf$/);
+    expect(await picked).toMatchObject({ schedule: { specId: 'FI_FPTF2' }, shortLabel: '1. ročník Bc. – FI_FPTF2' });
+    expect(calls.at(-1)).toMatch(/\/fjfi\/Bc1FI_FPTF2\.json$/);
 
     const reopened = pickFjfiTimetable();
     await flush();
@@ -327,16 +333,30 @@ describe('pickFjfiTimetable', () => {
     change('program', 'Jaderná a částicová fyzika');
     expect(select('specialization').closest('label')!.hidden).toBe(true);
     document.querySelector('form')!.requestSubmit();
-    expect(await reopened).toMatchObject({ fileName: 'Bc1JCF1.pdf' });
+    expect(await reopened).toMatchObject({ schedule: { specId: 'JCF1' } });
   });
 
   it('explains a missing manifest and resolves null on close', async () => {
     stubFetch(undefined);
     const picked = pickFjfiTimetable();
     await flush();
-    expect(document.querySelector('.status')!.textContent).toMatch(/npm run fetch-fjfi/);
+    expect(document.querySelector('.status')!.textContent).toMatch(/npm run preprocess-fjfi/);
     [...document.querySelectorAll('button')].find((b) => b.textContent === 'Zavřít')!.click();
     expect(await picked).toBeNull();
+  });
+
+  it('keeps the dialog open on mismatched JSON and permits retry', async () => {
+    stubFetch(sampleManifest());
+    const picked = pickFjfiTimetable();
+    await flush();
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ version: 1, id: 'wrong-timetable', lessons: [] }));
+    document.querySelector('form')!.requestSubmit();
+    await flush();
+    expect(document.querySelector('dialog')).not.toBeNull();
+    expect(document.querySelector('.status')!.textContent).toMatch(/nepodařilo/);
+    expect(document.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
+    document.querySelector('form')!.requestSubmit();
+    expect(await picked).toMatchObject({ schedule: { lessons: [expect.objectContaining({ subject: 'MAN' })] } });
   });
 
   it('keeps the selected program and kruh when changing degree years with different option orders', async () => {
@@ -368,6 +388,6 @@ describe('pickFjfiTimetable', () => {
       expect(select('kruh').selectedOptions[0]!.textContent).toBe('2. kruh');
     }
     document.querySelector('form')!.requestSubmit();
-    expect(await picked).toMatchObject({ fileName: 'Ing1JCF2.pdf', shortLabel: '1. ročník NMS – JCF2' });
+    expect(await picked).toMatchObject({ schedule: { specId: 'JCF2' }, shortLabel: '1. ročník NMS – JCF2' });
   });
 });

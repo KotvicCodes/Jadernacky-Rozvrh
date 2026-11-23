@@ -1,11 +1,13 @@
 /**
  * "Importovat z webu FJFI": picks an official timetable from the copy of
- * rozvrh.fjfi.cvut.cz that scripts/fetch-fjfi.mjs puts next to the app
+ * rozvrh.fjfi.cvut.cz that scripts/preprocess-fjfi.mjs puts next to the app
  * (public/fjfi/). The site itself sends no CORS headers, so the app cannot
  * fetch from it directly.
  */
 import { closeOnBackdropClick } from '../dialog';
 import { h } from '../dom';
+import { createSchedule, normalizeLesson, type Schedule } from '../model';
+import { parseOfficialTimetable } from './official-data';
 import '../web-import.css';
 
 export interface FjfiKruh {
@@ -13,7 +15,7 @@ export interface FjfiKruh {
   kruh: number | null;
   /** Official ID, e.g. "Bc1JCF2". */
   id: string;
-  /** File path relative to manifest.json, e.g. "Bc1JCF2.pdf". */
+  /** Preprocessed JSON path relative to manifest.json. */
   file: string;
 }
 
@@ -65,20 +67,20 @@ export function groupPrograms(programs: FjfiProgram[]): FjfiProgramGroup[] {
 }
 
 export const MANIFEST_PATH = 'fjfi/manifest.json';
-const SAFE_FILE = /^[A-Za-z0-9_-]+\.(pdf|png)$/;
+const SAFE_FILE = /^[A-Za-z0-9_-]+\.json$/;
 
 export class ManifestError extends Error {}
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
 
-/** Validates manifest.json (written by scripts/fetch-fjfi.mjs) and keeps only the fields the dialog uses. */
+/** Validates manifest.json (written by scripts/preprocess-fjfi.mjs) and keeps only the fields the dialog uses. */
 export function parseManifest(json: unknown): FjfiManifest {
   const fail = (what: string): never => {
     throw new ManifestError(`Neplatný seznam rozvrhů (${what}).`);
   };
   if (!isObject(json)) return fail('není objekt');
-  if (json.version !== 1) fail(`neznámá verze ${String(json.version)}`);
+  if (json.version !== 2) fail(`neznámá verze ${String(json.version)}`);
   const generatedAt = new Date(typeof json.generatedAt === 'string' ? json.generatedAt : NaN);
   if (Number.isNaN(generatedAt.getTime())) fail('chybí datum');
   if (!Array.isArray(json.years) || json.years.length === 0) return fail('žádné ročníky');
@@ -143,7 +145,7 @@ export async function loadManifest(signal?: AbortSignal): Promise<FjfiManifest> 
   if (res.status === 404) {
     throw new ManifestError(
       import.meta.env.DEV
-        ? 'Seznam rozvrhů z webu FJFI tu zatím není. Stáhni ho příkazem npm run fetch-fjfi a obnov stránku.'
+        ? 'Seznam rozvrhů z webu FJFI tu zatím není. Spusť npm run sync-fjfi a npm run preprocess-fjfi a obnov stránku.'
         : 'Seznam rozvrhů z webu FJFI tu zatím není. Zkus to prosím později, nebo rozvrh stáhni z rozvrh.fjfi.cvut.cz a importuj ho ze zařízení.',
     );
   }
@@ -177,14 +179,13 @@ function saveLastChoice(year: FjfiYear, program: FjfiProgram, kruh: FjfiKruh): v
 }
 
 export interface PickedTimetable {
-  file: Blob;
-  fileName: string;
+  schedule: Schedule;
   label: string;
   /** Compact name for the tab, see timetableShortLabel. */
   shortLabel: string;
 }
 
-/** Opens the "Import from FJFI website" dialog. Resolves with the chosen official file, or null if cancelled. */
+/** Opens the "Import from FJFI website" dialog. Resolves with the chosen preprocessed schedule, or null if cancelled. */
 export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
   return new Promise((resolve) => {
     const abort = new AbortController();
@@ -293,13 +294,15 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
         try {
           const res = await fetch(new URL(kruh.file, manifestUrl()), { signal: abort.signal });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const file = await res.blob();
+          const data = parseOfficialTimetable(await res.json(), kruh.id);
+          const shortLabel = timetableShortLabel(year, program, kruh);
+          const schedule = createSchedule(data.specId, shortLabel);
+          schedule.lessons = data.lessons.map((lesson) => normalizeLesson(lesson));
           saveLastChoice(year, program, kruh);
           result = {
-            file,
-            fileName: kruh.file.split('/').pop() ?? kruh.file,
+            schedule,
             label: timetableLabel(year, program, kruh),
-            shortLabel: timetableShortLabel(year, program, kruh),
+            shortLabel,
           };
           dialog.close();
         } catch {

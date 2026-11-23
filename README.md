@@ -18,7 +18,7 @@ download it as a PDF.
 - Drag and drop lessons to another day or hour (snaps to whole hours); Alt + arrow keys do the same from the keyboard.
 - Download as **PDF** (A4 landscape) or **PNG**, drawn like the official timetable.
 - Exports carry the schedule data invisibly (PNG `tEXt` chunk, PDF Info entry), so they can be imported back later.
-- **Import** straight from the FJFI website (Importovat → Z webu FJFI): pick the year (ročník), study program, specialization where offered and, when the program has more than one, the kruh. The list is not hardcoded: it is read from rozvrh.fjfi.cvut.cz on every deploy (see [Automatic updates and deployment](#automatic-updates-and-deployment)).
+- **Import** straight from the FJFI website (Importovat → Z webu FJFI): pick the year (ročník), study program, specialization where offered and, when the program has more than one, the kruh. Timetables are recognized once during deployment; importing downloads a small JSON file without running OCR in the browser. The list is not hardcoded: it is read from rozvrh.fjfi.cvut.cz on every deploy (see [Automatic updates and deployment](#automatic-updates-and-deployment)).
 - **Import** a timetable from a file (Importovat → Ze zařízení), by pasting (Ctrl+V) or by dropping it on the page:
   - our own PDF/PNG exports are restored exactly from the data embedded in them;
   - official PDFs/PNGs from rozvrh.fjfi.cvut.cz (or a screenshot of the whole table) are recognised:
@@ -61,7 +61,8 @@ npm run dev        # local dev server
 npm run typecheck  # TypeScript checks
 npm test           # unit tests (Vitest)
 npm run build      # production build into dist/
-npm run fetch-fjfi      # copy the official timetables into public/fjfi/ (needed for "Z webu FJFI" in dev)
+npm run sync-fjfi       # cache source PDFs and refresh bachelor choices
+npm run preprocess-fjfi # recognize cached PDFs; publish JSON in public/fjfi/ for web imports
 npm run check-programs  # does PROGRAMS in src/config.ts still match the website?
 npm run update-courses # refresh the course-code dictionary from the official catalogue
 ```
@@ -76,21 +77,29 @@ the 15th, a manual run refreshes the copy immediately.
 Every deployment run automatically:
 
 1. Discovers the **bachelor’s and master’s year pages** from the FJFI navigation and mirrors their timetable
-   PDFs into `public/fjfi/`, with a `manifest.json`. Děčín, teacher training and language pages are skipped.
-   The browser loads this copy because the faculty website does not allow cross-origin downloads.
-   Cached PDFs use conditional requests, so unchanged files need not be downloaded again.
+   PDFs into `.cache/fjfi/source/`, with a source manifest. Děčín, teacher training and language pages are
+   skipped. Conditional requests reuse unchanged PDFs. Source documents stay in the build cache and are
+   not published with the website.
 2. Refreshes the manual editor’s bachelor **Obor** choices from the same manifest, including new, renamed
    and removed programs. The web import dialog lists both bachelor’s and master’s timetables.
 3. Refreshes lecturer names, room codes and the course dictionary used to correct OCR. The course list
    follows the catalogue's academic year and includes regular courses offered in either semester;
    historical and doctoral entries are excluded. Course matching uses the bundled copy without contacting
    the catalogue from the browser.
-4. Runs the tests and production build, then publishes the result. The Pages asset path follows the
+4. Recognizes every timetable using the same OCR and correction logic as file imports. Recognition results
+   are reused when the source PDF, recognition code, dictionaries and dependencies are unchanged. The
+   complete validated set is published as content-hashed JSON files and a manifest in `public/fjfi/`.
+   The November 2026 set contains 108 timetables and 1,969 lessons in about 208 KB of lesson JSON, instead
+   of 70.7 MB of source PDFs. Selecting a timetable downloads only its JSON and creates a fresh editable tab.
+   A first run does the full OCR pass; unchanged deployments reuse all results. The renderer
+   (`@napi-rs/canvas`) is a development/build dependency and is not shipped to browsers.
+5. Runs the tests and production build, then publishes the result. The Pages asset path follows the
    repository name automatically.
 
 Program and OCR metadata are generated in the runner before building; they do not create bot commits or
 maintenance PRs. The checked-in lists remain usable for local development without network access.
-`npm run sync-fjfi` refreshes timetables and bachelor choices locally; `npm run update-names` refreshes OCR
+`npm run sync-fjfi` refreshes source timetables and bachelor choices locally, then
+`npm run preprocess-fjfi` generates the JSON needed for web imports; `npm run update-names` refreshes OCR
 lecturer/room metadata and `npm run update-courses` refreshes course codes. `npm run check-programs` is an
 optional diagnostic for comparing local choices with the website. Invalid or empty catalogue data stops
 the refresh before replacing the course dictionary.
@@ -103,7 +112,7 @@ build and deployment. No personal token, external scheduler or dummy commits are
 Network requests have timeouts and retries. If FJFI is unavailable, a timetable is broken, parsing finds no
 usable data, or a test/build fails, the deployment stops and **the existing live site stays available**. The
 next semester refresh, push to `main` or manual run tries again. A faculty website redesign can require a
-parser fix; the failed Actions run contains the error. Workflows do not cancel a deployment that is already running.
+parser fix; recognition can also need correction for unusual source layouts. The failed Actions run contains the error. Workflows do not cancel a deployment that is already running.
 
 ## Licence
 

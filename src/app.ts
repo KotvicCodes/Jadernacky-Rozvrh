@@ -78,14 +78,13 @@ export class App {
 
   private importing = false;
 
-  private async importFile(file: Blob, name: string, scheduleName = ''): Promise<void> {
+  private async importFile(file: Blob, name: string): Promise<void> {
     if (this.importing) return;
     this.importing = true;
     document.body.classList.add('busy');
     try {
       const { importSchedule } = await import('./import');
       const { schedule, usedOcr } = await importSchedule(file, name, (message) => (this.status.textContent = message));
-      if (scheduleName) schedule.name = cleanText(scheduleName);
       this.state.schedules.push(schedule);
       this.state.activeId = schedule.id;
       const check = usedOcr ? ' Texty byly rozpoznány z obrázku – zkontroluj je prosím (nejpřesnější je import z PDF).' : '';
@@ -311,12 +310,19 @@ export class App {
 
   private async importFromWeb(): Promise<void> {
     if (this.importing) return;
+    this.importing = true;
     try {
       const { pickFjfiTimetable } = await import('./import/web');
       const picked = await pickFjfiTimetable();
-      if (picked) await this.importFile(picked.file, picked.fileName, picked.shortLabel);
+      if (picked) {
+        this.state.schedules.push(picked.schedule);
+        this.state.activeId = picked.schedule.id;
+        this.commit(`Importováno ${picked.schedule.lessons.length} hodin.`);
+      }
     } catch (err) {
       this.status.textContent = `Import se nepovedl: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      this.importing = false;
     }
   }
 

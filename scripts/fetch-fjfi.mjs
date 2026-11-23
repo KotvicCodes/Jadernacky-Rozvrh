@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Mirrors the official bachelor/master student timetables of rozvrh.fjfi.cvut.cz into
- * public/fjfi/ for the "Importovat z webu FJFI" dialog. The site sends no
- * CORS headers, so the app cannot fetch them itself; Vite copies public/
- * into the build and the app loads them from its own origin.
+ * .cache/fjfi/source/ for build-time recognition. preprocess-fjfi.mjs publishes
+ * validated JSON for the "Importovat z webu FJFI" dialog. Source PDFs are not
+ * copied into the deployed website.
  *
  *   npm run fetch-fjfi                    # manifest.json + one PDF per kruh
  *   npm run sync-fjfi                     # also refresh bachelor program choices
@@ -26,10 +26,9 @@ import { updateProgramSource } from './fjfi-metadata.mjs';
 import { MANIFEST_VERSION, SITE, bachelorCodes, buildYears, configProgramCodes, parseNav, parsePage, programDrift, isDegreeYear } from './fjfi-site.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const OUT = join(ROOT, 'public', 'fjfi');
+const OUT = join(ROOT, '.cache', 'fjfi', 'source');
 const SAFE_FILE = /^[A-Za-z0-9_-]+\.(pdf|png)$/;
-// PDFs: ~0.6 MB each, ~71 MB for the 108 degree timetables (Nov 2026) — fine for
-// GitHub Pages (1 GB site limit) and they OCR much better than the PNGs.
+// PDFs OCR much better than the PNGs. They remain in the build cache.
 const PREFER = process.env.FJFI_FORMAT === 'png' ? 'png' : 'pdf';
 
 const checkOnly = process.argv.includes('--check-programs');
@@ -159,7 +158,7 @@ try {
     }
     const programs = years.reduce((n, y) => n + y.programs.length, 0);
     console.log(
-      `\n${years.length} years, ${programs} programs, ${count} timetables (${(bytes / 1e6).toFixed(1)} MB; ${fetched} downloaded, ${unchanged} unchanged) → public/fjfi/`,
+      `\n${years.length} years, ${programs} programs, ${count} timetables (${(bytes / 1e6).toFixed(1)} MB; ${fetched} downloaded, ${unchanged} unchanged) → .cache/fjfi/source/`,
     );
   }
 } catch (err) {

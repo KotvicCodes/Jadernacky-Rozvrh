@@ -12,11 +12,13 @@
     "update-courses": "node scripts/update-known-courses.mjs",
     "fetch-fjfi": "node scripts/fetch-fjfi.mjs",
     "check-programs": "node scripts/fetch-fjfi.mjs --check-programs",
-    "sync-fjfi": "node scripts/fetch-fjfi.mjs --update-programs"
+    "sync-fjfi": "node scripts/fetch-fjfi.mjs --update-programs",
+    "preprocess-fjfi": "node scripts/preprocess-fjfi.mjs"
   },
   "license": "MIT",
   "type": "module",
   "devDependencies": {
+    "@napi-rs/canvas": "^1.2.0",
     "@types/node": "^26.6.6",
     "@types/pngjs": "^6.0.5",
     "jsdom": "^29.1.1",

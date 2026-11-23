@@ -22,7 +22,7 @@ jobs:
   build:
     if: github.event_name != 'schedule' || github.event.schedule == '23 4 15 2,9 *'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,15 +33,17 @@ jobs:
       # Conditional requests reuse PDFs that have not changed.
       - uses: actions/cache@v4
         with:
-          path: public/fjfi
-          key: fjfi-v1-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: fjfi-v1-
+          path: .cache/fjfi
+          key: fjfi-v2-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fjfi-v2-${{ runner.os }}-${{ runner.arch }}-
       - name: Refresh bachelor and master timetables and program choices
         run: npm run sync-fjfi
       - name: Refresh OCR lecturers and rooms
         run: npm run update-names
       - name: Refresh OCR course codes
         run: npm run update-courses
+      - name: Recognize and validate all official timetables
+        run: npm run preprocess-fjfi
       - run: npm test
       # Pages serves the site under /<repo name>/; derive it so renames cannot break asset URLs.
       - run: npm run build
