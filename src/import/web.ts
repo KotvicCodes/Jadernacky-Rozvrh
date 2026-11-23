@@ -36,6 +36,34 @@ export interface FjfiManifest {
   years: FjfiYear[];
 }
 
+export interface FjfiProgramGroup {
+  name: string;
+  programs: FjfiProgram[];
+}
+
+/** Split the faculty's labels without guessing relationships from program codes. */
+export function splitProgramName(name: string): { program: string; specialization: string | null } {
+  const parts = /^(.*?),\s*(?:spec\.|specializace)\s+(.+)$/i.exec(name);
+  return parts
+    ? { program: parts[1]!.trim(), specialization: parts[2]!.trim() }
+    : { program: name, specialization: null };
+}
+
+/** Keep the individual timetable entries under their shared program name. */
+export function groupPrograms(programs: FjfiProgram[]): FjfiProgramGroup[] {
+  const groups = new Map<string, FjfiProgramGroup>();
+  for (const program of programs) {
+    const { program: name } = splitProgramName(program.name);
+    let group = groups.get(name);
+    if (!group) {
+      group = { name, programs: [] };
+      groups.set(name, group);
+    }
+    group.programs.push(program);
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+}
+
 export const MANIFEST_PATH = 'fjfi/manifest.json';
 const SAFE_FILE = /^[A-Za-z0-9_-]+\.(pdf|png)$/;
 
@@ -164,14 +192,17 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
 
     const yearSelect = h('select', { name: 'year' });
     const programSelect = h('select', { name: 'program' });
+    const specializationSelect = h('select', { name: 'specialization' });
     const kruhSelect = h('select', { name: 'kruh' });
     const field = (label: string, control: HTMLElement) => h('label', { class: 'field' }, h('span', {}, label), control);
+    const specializationField = field('Specializace', specializationSelect);
     const kruhField = field('Kruh', kruhSelect);
     const fields = h(
       'div',
       { class: 'web-import-fields', hidden: true },
       field('Ročník', yearSelect),
       field('Obor', programSelect),
+      specializationField,
       kruhField,
     );
     const status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' }, 'Načítám seznam rozvrhů…');
@@ -196,8 +227,10 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
     // programs/kruhs as soon as a parent select changes.
     let selectedProgram: string | undefined;
     let selectedKruh: number | null | undefined;
+    let groups: FjfiProgramGroup[] = [];
     const currentYear = () => manifest?.years[Number(yearSelect.value)];
-    const currentProgram = () => currentYear()?.programs[Number(programSelect.value)];
+    const currentGroup = () => groups.find((group) => group.name === programSelect.value);
+    const currentProgram = () => currentGroup()?.programs.find((program) => program.code === specializationSelect.value);
     const currentKruh = () => currentProgram()?.kruhs[Number(kruhSelect.value)];
 
     const fillKruhs = (wanted: number | null | undefined) => {
@@ -211,21 +244,40 @@ export async function pickFjfiTimetable(): Promise<PickedTimetable | null> {
       selectedProgram = program.code;
       selectedKruh = program.kruhs[index]?.kruh;
     };
+    const fillSpecializations = (wantedCode: string | undefined, wantedKruh: number | null | undefined) => {
+      const group = currentGroup();
+      if (!group) return;
+      const chosen = group.programs.find((program) => program.code === wantedCode) ?? group.programs[0]!;
+      specializationSelect.replaceChildren(...group.programs.map((program) => h('option', {
+        value: program.code,
+        selected: program === chosen,
+      }, splitProgramName(program.name).specialization ?? 'Bez specializace')));
+      specializationField.hidden = group.programs.every((program) => splitProgramName(program.name).specialization === null);
+      specializationSelect.disabled = specializationField.hidden;
+      fillKruhs(wantedKruh);
+    };
     const fillPrograms = (wantedCode: string | undefined, wantedKruh: number | null | undefined) => {
       const year = currentYear();
       if (!year) return;
-      const index = Math.max(0, year.programs.findIndex((p) => p.code === wantedCode));
-      programSelect.replaceChildren(...year.programs.map((p, i) => h('option', { value: i, selected: i === index }, p.name)));
-      fillKruhs(wantedKruh);
+      groups = groupPrograms(year.programs);
+      const chosen = groups.find((group) => group.programs.some((program) => program.code === wantedCode))
+        ?? groups.find((group) => group.name === programSelect.value) ?? groups[0]!;
+      programSelect.replaceChildren(...groups.map((group) => h('option', {
+        value: group.name,
+        selected: group === chosen,
+      }, group.name)));
+      fillSpecializations(wantedCode, wantedKruh);
     };
     yearSelect.addEventListener('change', () => fillPrograms(selectedProgram, selectedKruh));
-    programSelect.addEventListener('change', () => fillKruhs(selectedKruh));
+    programSelect.addEventListener('change', () => fillSpecializations(selectedProgram, selectedKruh));
+    specializationSelect.addEventListener('change', () => fillKruhs(selectedKruh));
     kruhSelect.addEventListener('change', () => {
       selectedKruh = currentKruh()?.kruh;
     });
 
     const busy = (on: boolean) => {
       for (const el of [yearSelect, programSelect, submitBtn]) el.disabled = on;
+      specializationSelect.disabled = on || specializationField.hidden !== false;
       kruhSelect.disabled = on || kruhField.hidden !== false;
     };
 

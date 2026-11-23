@@ -15,7 +15,7 @@ import {
 } from '../scripts/fjfi-site.mjs';
 import { parseRoomCodes, parseTeacherNames, updateProgramSource } from '../scripts/fjfi-metadata.mjs';
 import { PROGRAMS } from '../src/config';
-import { kruhChoices, parseManifest, pickFjfiTimetable, timetableLabel, timetableShortLabel, type FjfiProgram } from '../src/import/web';
+import { groupPrograms, kruhChoices, parseManifest, pickFjfiTimetable, splitProgramName, timetableLabel, timetableShortLabel, type FjfiProgram } from '../src/import/web';
 
 const bs1Html = readFileSync(join(process.cwd(), 'tests/fixtures/fjfi-bs1.html'), 'utf8');
 
@@ -194,6 +194,17 @@ describe('dialog options', () => {
   const year = m.years[0]!;
   const program = (code: string): FjfiProgram => year.programs.find((p) => p.code === code)!;
 
+  it('groups specializations by the official program name without merging unrelated programs', () => {
+    const ipl = program('FI_IPL');
+    const pf = { ...ipl, code: 'FI_PF', name: 'Fyzikální inženýrství, spec. Počítačová fyzika' };
+    const groups = groupPrograms([ipl, pf, program('JCF')]);
+    expect(groups.map((group) => group.name)).toEqual(['Fyzikální inženýrství', 'Jaderná a částicová fyzika']);
+    expect(groups[0]!.programs).toEqual([ipl, pf]);
+    expect(splitProgramName(pf.name)).toEqual({ program: 'Fyzikální inženýrství', specialization: 'Počítačová fyzika' });
+    expect(splitProgramName('Jaderná a částicová fyzika')).toEqual({ program: 'Jaderná a částicová fyzika', specialization: null });
+    expect(splitProgramName('Obor, specializace Název')).toEqual({ program: 'Obor', specialization: 'Název' });
+  });
+
   it('hides the kruh choice for single-kruh programs', () => {
     expect(kruhChoices(program('FI_IPL')).visible).toBe(false);
     expect(kruhChoices(program('JCF'))).toEqual({
@@ -263,9 +274,12 @@ describe('pickFjfiTimetable', () => {
     await flush();
     expect(document.querySelector('.web-import-synced')!.textContent).toMatch(/2026/);
 
-    change('program', 'Fyzikální inženýrství, spec. Inženýrství pevných látek');
+    change('program', 'Fyzikální inženýrství');
+    expect(select('specialization').selectedOptions[0]!.textContent).toBe('Inženýrství pevných látek');
+    expect(select('specialization').closest('label')!.hidden).toBe(false);
     expect(select('kruh').closest('label')!.hidden).toBe(true);
     change('program', 'Jaderná a částicová fyzika');
+    expect(select('specialization').closest('label')!.hidden).toBe(true);
     expect(select('kruh').closest('label')!.hidden).toBe(false);
     change('kruh', '2. kruh');
 
@@ -278,6 +292,42 @@ describe('pickFjfiTimetable', () => {
       `${import.meta.env.BASE_URL}fjfi/Bc1JCF2.pdf`,
     ]);
     expect(document.querySelector('dialog')).toBeNull();
+  });
+
+  it('imports the chosen specialization and kruh and restores both when reopened', async () => {
+    const manifest = sampleManifest();
+    const year = manifest.years[0]!;
+    year.programs.push({
+      code: 'FI_FPTF',
+      name: 'Fyzikální inženýrství, spec. Fyzika plazmatu a termojaderné fúze',
+      page: 'bs1',
+      kruhs: [1, 2].map((kruh) => ({ kruh, id: `Bc1FI_FPTF${kruh}`, file: `Bc1FI_FPTF${kruh}.pdf`, url: '' })),
+    });
+    const calls = stubFetch(manifest);
+    const picked = pickFjfiTimetable();
+    await flush();
+    expect([...select('program').options].map((o) => o.textContent).filter((name) => name === 'Fyzikální inženýrství')).toHaveLength(1);
+    change('program', 'Fyzikální inženýrství');
+    expect([...select('specialization').options].map((o) => o.textContent)).toEqual([
+      'Inženýrství pevných látek', 'Fyzika plazmatu a termojaderné fúze',
+    ]);
+    change('specialization', 'Fyzika plazmatu a termojaderné fúze');
+    change('kruh', '2. kruh');
+    document.querySelector('form')!.requestSubmit();
+    expect(await picked).toMatchObject({ fileName: 'Bc1FI_FPTF2.pdf', shortLabel: '1. ročník Bc. – FI_FPTF2' });
+    expect(calls.at(-1)).toMatch(/\/fjfi\/Bc1FI_FPTF2\.pdf$/);
+
+    const reopened = pickFjfiTimetable();
+    await flush();
+    expect(select('program').selectedOptions[0]!.textContent).toBe('Fyzikální inženýrství');
+    expect(select('specialization').value).toBe('FI_FPTF');
+    expect(select('kruh').selectedOptions[0]!.textContent).toBe('2. kruh');
+    change('specialization', 'Inženýrství pevných látek');
+    expect(select('kruh').closest('label')!.hidden).toBe(true);
+    change('program', 'Jaderná a částicová fyzika');
+    expect(select('specialization').closest('label')!.hidden).toBe(true);
+    document.querySelector('form')!.requestSubmit();
+    expect(await reopened).toMatchObject({ fileName: 'Bc1JCF1.pdf' });
   });
 
   it('explains a missing manifest and resolves null on close', async () => {
