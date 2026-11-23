@@ -1,6 +1,7 @@
 import { DEFAULT_COLOR_ID, KRUH_OPTIONS, PROGRAMS, canonicalSpecId, formatSpecId, parseSpecId } from './config';
 import { openLessonDialog } from './dialog';
 import { h } from './dom';
+import { enablePointerDrag } from './drag';
 import { downloadPdf, downloadPng } from './export';
 import { renderGrid } from './grid';
 import { startInlineEdit } from './inline-edit';
@@ -101,8 +102,8 @@ export class App {
     return this.state.schedules.find((s) => s.id === this.state.activeId) ?? this.state.schedules[0]!;
   }
 
-  private commit(message?: string): void {
-    this.active.updatedAt = Date.now();
+  private commit(message?: string, schedule = this.active): void {
+    schedule.updatedAt = Date.now();
     const ok = saveState(this.state);
     this.status.textContent = ok ? (message ?? '') : 'Rozvrh se nepodařilo uložit v prohlížeči (soukromé okno?).';
     this.render();
@@ -110,6 +111,16 @@ export class App {
 
   /** Last tab click, to spot a double click even if the tab was re-rendered in between. */
   private lastTabClick = { id: '', at: 0 };
+
+  private reorderSchedule(id: string, index: number): void {
+    const from = this.state.schedules.findIndex((s) => s.id === id);
+    if (from < 0 || from === index) return;
+    const [schedule] = this.state.schedules.splice(from, 1);
+    this.state.schedules.splice(index, 0, schedule!);
+    this.lastTabClick = { id: '', at: 0 };
+    this.commit('Pořadí rozvrhů uloženo.', schedule);
+    this.tabFor(id)?.focus({ preventScroll: true });
+  }
 
   /** One tab per schedule: click switches, double click (or F2) renames, "+" adds one. */
   private renderTabs(): void {
@@ -125,10 +136,33 @@ export class App {
           'data-schedule-id': s.id,
           'aria-selected': s.id === active.id ? 'true' : 'false',
           tabindex: s.id === active.id ? 0 : -1,
-          title: `${label} – dvojklikem přejmenuješ`,
+          title: `${label} – dvojklikem přejmenuješ, přetažením nebo Alt+šipkou přesuneš`,
+          'aria-keyshortcuts': 'F2 Alt+ArrowLeft Alt+ArrowRight',
         },
         label,
       );
+      let targetIndex = i;
+      const clearDrag = () => {
+        tab.classList.remove('tab--dragging');
+        this.tabs.querySelectorAll('.tab--drop-before, .tab--drop-after').forEach((el) => el.classList.remove('tab--drop-before', 'tab--drop-after'));
+      };
+      enablePointerDrag(tab, {
+        scrollHost: this.tabs,
+        onStart: () => { tab.classList.add('tab--dragging'); this.lastTabClick = { id: '', at: 0 }; },
+        onMove: (point) => {
+          const rect = this.tabs.getBoundingClientRect();
+          clearDrag();
+          tab.classList.add('tab--dragging');
+          targetIndex = i;
+          if (point.y < rect.top - 30 || point.y > rect.bottom + 30) return;
+          const others = [...this.tabs.querySelectorAll<HTMLElement>('[data-schedule-id]')].filter((el) => el !== tab);
+          targetIndex = others.filter((el) => { const r = el.getBoundingClientRect(); return point.x > r.left + r.width / 2; }).length;
+          const marker = others[targetIndex] ?? others.at(-1);
+          marker?.classList.add(targetIndex === others.length ? 'tab--drop-after' : 'tab--drop-before');
+        },
+        onEnd: () => { clearDrag(); this.reorderSchedule(s.id, targetIndex); },
+        onCancel: clearDrag,
+      });
       tab.addEventListener('click', (e) => {
         const now = Date.now();
         const isDouble = e.detail >= 2 || (this.lastTabClick.id === s.id && now - this.lastTabClick.at < 500);
@@ -147,6 +181,10 @@ export class App {
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           e.preventDefault();
           const list = this.state.schedules;
+          if (e.altKey) {
+            this.reorderSchedule(s.id, Math.max(0, Math.min(list.length - 1, i + (e.key === 'ArrowRight' ? 1 : -1))));
+            return;
+          }
           const next = list[(i + (e.key === 'ArrowRight' ? 1 : list.length - 1)) % list.length]!;
           this.state.activeId = next.id;
           saveState(this.state);
@@ -166,6 +204,13 @@ export class App {
     });
 
     this.tabs.replaceChildren(...tabs, addTab);
+    const selected = this.tabFor(active.id);
+    if (selected) {
+      const rect = selected.getBoundingClientRect();
+      const host = this.tabs.getBoundingClientRect();
+      if (rect.left < host.left) this.tabs.scrollLeft -= host.left - rect.left;
+      else if (rect.right > host.right) this.tabs.scrollLeft += rect.right - host.right;
+    }
   }
 
   private tabFor(id: string): HTMLElement | undefined {

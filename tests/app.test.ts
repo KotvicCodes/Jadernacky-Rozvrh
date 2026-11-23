@@ -69,6 +69,26 @@ describe('timetable tabs', () => {
     typeAndPress(root.querySelector<HTMLInputElement>('input.tab-input')!, 'LS 2027', 'Enter');
     expect(tabs(root)[0]!.textContent).toBe('LS 2027');
   });
+  it('persists tab order with Alt+arrows while keeping the active schedule', () => {
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    const original = loadState();
+    tabs(root)[2]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true }));
+    const reordered = loadState();
+    expect(reordered.schedules.map((s) => s.id)).toEqual([
+      original.schedules[0]!.id, original.schedules[2]!.id, original.schedules[1]!.id,
+    ]);
+    expect(reordered.activeId).toBe(original.activeId);
+    expect((document.activeElement as HTMLElement).dataset.scheduleId).toBe(original.activeId);
+    // Ordinary arrows still switch schedules in their new order.
+    tabs(root)[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    expect(loadState().activeId).toBe(original.schedules[1]!.id);
+    const reloaded = document.createElement('div');
+    new App(reloaded);
+    expect(tabs(reloaded).map((t) => t.dataset.scheduleId)).toEqual(reordered.schedules.map((s) => s.id));
+  });
+
+
 });
 
 describe('timetable ID in the corner', () => {
