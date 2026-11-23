@@ -52,3 +52,36 @@ export function parseRoomCodes(html) {
   if (!rooms.length) throw new Error('No room codes on the FJFI classroom page (redesign?)');
   return rooms;
 }
+
+/** Regular courses actually offered in the catalogue's academic year. */
+export function parseCourseCatalogue(html) {
+  const period = /(\d{4})\/(\d{4})\s*<select\b[^>]*\bid=["']period["']/i.exec(html);
+  if (!period || Number(period[2]) !== Number(period[1]) + 1) {
+    throw new Error('No academic year in the course catalogue (redesign?)');
+  }
+  const table = /<table\b[^>]*\bclass=["'][^"']*\bseznam\.predmetu\b[^"']*["'][^>]*>([\s\S]*?)<\/table>/i.exec(html)?.[1];
+  if (!table) throw new Error('No course table in the catalogue (redesign?)');
+  const headers = [...table.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/gi)].map(([, text]) => decodeText(text));
+  const codeColumn = headers.indexOf('Kód');
+  const nameColumn = headers.indexOf('Název předmětu');
+  const termColumn = headers.indexOf('Vypsán v semestru');
+  if ([codeColumn, nameColumn, termColumn].includes(-1)) {
+    throw new Error('Missing course catalogue columns (redesign?)');
+  }
+  const terms = new Set([`B${period[1].slice(-2)}1`, `B${period[1].slice(-2)}2`]);
+  const codes = new Set();
+  for (const [, row] of table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(([, text]) => decodeText(text));
+    if (!cells.length) continue;
+    if (cells.length !== headers.length) throw new Error('Unexpected course catalogue row (redesign?)');
+    const code = cells[codeColumn];
+    // Ignore doctoral and other identifiers outside the regular
+    // two-digit department-prefix format.
+    if (!/^\d{2}[A-Z][A-Z0-9_]*$/.test(code)) continue;
+    if (![...cells[termColumn].matchAll(/\bB\d{3}\b/g)].some(([term]) => terms.has(term))) continue;
+    if (!cells[nameColumn]) throw new Error(`No name for course ${code} (redesign?)`);
+    codes.add(code);
+  }
+  if (!codes.size) throw new Error('No currently offered courses in the catalogue (redesign?)');
+  return { academicYear: `${period[1]}/${period[2]}`, codes: [...codes].sort() };
+}

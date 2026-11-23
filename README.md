@@ -27,7 +27,15 @@ download it as a PDF.
     they are rendered at high resolution; titles read from the small PNGs are worth double-checking.
   - lecturers and rooms read by OCR are matched against the official lists of teachers and classrooms
     (`src/import/known-names.ts`): a name 1–2 letters off a single known teacher becomes that teacher, with
-    proper diacritics. Refresh the lists each semester with `npm run update-names` (see [Each semester](#each-semester)).
+    proper diacritics. The deployment workflow refreshes the lists automatically; `npm run update-names`
+    does the same locally.
+  - course codes are checked against currently offered regular courses in the official
+    [ČVUT catalogue](https://bilakniha.cvut.cz/cs/f4-predmety.html) (`src/import/known-courses.ts`). The
+    department prefix is mapped to the timetable abbreviation, such as `01MAN` → `MAN`. For an unknown
+    reading of at least four characters, a unique match within one letter edit in the lesson's colour-coded
+    department can bring different OCR passes into agreement. A valid winning reading is kept; numbers,
+    separators and suffixes such as `cv` and `.rez` are preserved. Short, unknown or ambiguous codes stay
+    as read. This does not guess aliases for generic labels such as `JAZ.2`.
   - pdf.js and the OCR engine (~4 MB, from a CDN) load only when an import needs them.
 - Several schedules (e.g. one per semester) are kept side by side as tabs: click a tab to switch, double-click it (or press F2) to rename it, `+` adds a new one. Everything is saved in the browser (`localStorage`).
 
@@ -50,6 +58,7 @@ npm test           # unit tests (Vitest)
 npm run build      # production build into dist/
 npm run fetch-fjfi      # copy the official timetables into public/fjfi/ (needed for "Z webu FJFI" in dev)
 npm run check-programs  # does PROGRAMS in src/config.ts still match the website?
+npm run update-courses # refresh the course-code dictionary from the official catalogue
 ```
 
 ## Automatic updates and deployment
@@ -67,14 +76,19 @@ Every deployment run automatically:
    Cached PDFs use conditional requests, so unchanged files need not be downloaded again.
 2. Refreshes the manual editor’s bachelor **Obor** choices from the same manifest, including new, renamed
    and removed programs. The web import dialog lists both bachelor’s and master’s timetables.
-3. Refreshes lecturer names and room codes used to correct OCR.
+3. Refreshes lecturer names, room codes and the course dictionary used to correct OCR. The course list
+   follows the catalogue's academic year and includes regular courses offered in either semester;
+   historical and doctoral entries are excluded. Course matching uses the bundled copy without contacting
+   the catalogue from the browser.
 4. Runs the tests and production build, then publishes the result. The Pages asset path follows the
    repository name automatically.
 
 Program and OCR metadata are generated in the runner before building; they do not create bot commits or
 maintenance PRs. The checked-in lists remain usable for local development without network access.
 `npm run sync-fjfi` refreshes timetables and bachelor choices locally; `npm run update-names` refreshes OCR
-metadata. `npm run check-programs` is an optional diagnostic for comparing local choices with the website.
+lecturer/room metadata and `npm run update-courses` refreshes course codes. `npm run check-programs` is an
+optional diagnostic for comparing local choices with the website. Invalid or empty catalogue data stops
+the refresh before replacing the course dictionary.
 
 On the first day of each month, a separate schedule in the same workflow **only renews the workflow via the
 GitHub API** to prevent the 60-day public-repository inactivity shutdown. It skips the timetable fetch,

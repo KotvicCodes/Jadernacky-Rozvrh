@@ -143,6 +143,16 @@ describe('recognizeOfficial', () => {
     expect(result.lessons[0]).toMatchObject({ day: 0, start: 8, duration: 2, color: 'pink', subject: 'MECHcv', lecturer: 'Břeň', room: 'B-103' });
     expect(progress.at(-1)).toBe(JCF1.length + 1);
   });
+
+  it('uses department colour to correct a course title without applying course matching to the corner ID', async () => {
+    const engine: OcrEngine = {
+      read: async (_img, kind) => ({ text: { title: 'MECN', lecturer: 'Bren', room: 'B-103', spec: 'MECN' }[kind], confidence: 90 }),
+    };
+    const result = (await recognizeOfficial(fixture('Bc1JCF1'), engine))!;
+    expect(result.specText).toBe('MECN');
+    expect(result.lessons[0]).toMatchObject({ color: 'pink', subject: 'MECH' });
+    expect(result.lessons.find((lesson) => lesson.color === 'green')!.subject).not.toBe('MECH');
+  });
 });
 
 describe('pickReading', () => {

@@ -40,6 +40,8 @@ jobs:
         run: npm run sync-fjfi
       - name: Refresh OCR lecturers and rooms
         run: npm run update-names
+      - name: Refresh OCR course codes
+        run: npm run update-courses
       - run: npm test
       # Pages serves the site under /<repo name>/; derive it so renames cannot break asset URLs.
       - run: npm run build
