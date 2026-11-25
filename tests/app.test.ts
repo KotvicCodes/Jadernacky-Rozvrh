@@ -139,10 +139,10 @@ describe('timetable ID in the corner', () => {
 });
 
 describe('toolbar and header', () => {
-  it('has the download, import and delete buttons in that order, and no add button', () => {
+  it('has the download, import, replacement and delete buttons in that order, and no add button', () => {
     const root = setup();
     const buttons = [...root.querySelectorAll<HTMLButtonElement>('.toolbar-actions > button, .toolbar-actions > .menu-wrap > .btn')].map((b) => b.textContent);
-    expect(buttons).toEqual(['Stáhnout PNG', 'Stáhnout PDF', 'Importovat', 'Smazat rozvrh']);
+    expect(buttons).toEqual(['Stáhnout PNG', 'Stáhnout PDF', 'Importovat', 'Najít náhradu', 'Smazat rozvrh']);
   });
 
   it('shows no subtitle or hint, but credits the author and links bug reports to the repo', () => {

@@ -3,6 +3,7 @@ import { h } from './dom';
 import { enablePointerDrag, type DragPoint } from './drag';
 import { startInlineEdit } from './inline-edit';
 import { formatHour, layoutDay, type Lesson, type Schedule } from './model';
+import type { ReplacementOption } from './replacements';
 
 export interface GridHandlers {
   onSlotClick(day: number, hour: number): void;
@@ -13,8 +14,19 @@ export interface GridHandlers {
   onSpecIdEdit?(value: string): void;
 }
 
+/** Replacement finder overlay: the skipped lesson, and the same course in other timetables. */
+export interface GridOverlay {
+  skippedId: string;
+  options: readonly ReplacementOption[];
+  selectedKey: string | null;
+  onSelect(key: string): void;
+}
+
 const BASE_ROW_HEIGHT = 64;
 const LANE_MIN_HEIGHT = 32;
+/** Height of one lane in the replacement strip under a day's own lessons. */
+const ALT_LANE_HEIGHT = 38;
+const ALT_STRIP_PADDING = 6;
 
 function pct(hours: number): string {
   return `${(hours / HOUR_COUNT) * 100}%`;
@@ -115,13 +127,27 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   });
 }
 
-function renderLesson(lesson: Lesson, lane: number, lanes: number, handlers: GridHandlers, scrollHost: HTMLElement): HTMLElement {
+/** Vertical band of a track that a group of lanes is laid out in, as fractions of the track height. */
+interface Band {
+  top: number;
+  height: number;
+}
+
+const FULL: Band = { top: 0, height: 1 };
+
+function laneStyle(lane: number, lanes: number, band: Band): string {
+  return `top:${(band.top + (lane / lanes) * band.height) * 100}%;height:${(band.height / lanes) * 100}%`;
+}
+
+function renderLesson(
+  lesson: Lesson, lane: number, lanes: number, handlers: GridHandlers, scrollHost: HTMLElement, band = FULL, state = '',
+): HTMLElement {
   const color = paletteColor(lesson.color);
   const el = h(
     'button',
     {
       type: 'button',
-      class: `lesson${lanes > 1 ? ' lesson--compact' : ''}`,
+      class: `lesson${lanes > 1 ? ' lesson--compact' : ''}${state}`,
       'data-lesson-id': lesson.id,
       'aria-label': `Upravit: ${lessonLabel(lesson)}`,
       'aria-keyshortcuts': 'Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown',
@@ -129,8 +155,7 @@ function renderLesson(lesson: Lesson, lane: number, lanes: number, handlers: Gri
       style: [
         `left:${pct(lesson.start - FIRST_HOUR)}`,
         `width:${pct(lesson.duration)}`,
-        `top:${(lane / lanes) * 100}%`,
-        `height:${100 / lanes}%`,
+        laneStyle(lane, lanes, band),
         `--fill:${color.fill}`,
         `--border:${color.border}`,
       ].join(';'),
@@ -139,12 +164,56 @@ function renderLesson(lesson: Lesson, lane: number, lanes: number, handlers: Gri
     h(
       'span',
       { class: 'lesson-meta' },
-      h('span', { class: 'lesson-lecturer' }, lesson.lecturer),
+      // The lesson being replaced says so where its lecturer would be.
+      state.includes('lesson--skipped')
+        ? h('span', { class: 'lesson-skip-tag' }, 'vynecháš')
+        : h('span', { class: 'lesson-lecturer' }, lesson.lecturer),
       h('span', { class: 'lesson-room' }, lesson.room),
     ),
   );
   enableDrag(el, lesson, handlers, scrollHost);
   el.addEventListener('click', () => handlers.onLessonClick(lesson));
+  return el;
+}
+
+function optionLabel(option: ReplacementOption): string {
+  const parts = [
+    `Náhrada ${option.subject}`,
+    `${DAYS[option.day]} ${formatHour(option.start)}–${formatHour(option.start + option.duration)}`,
+    option.room && `učebna ${option.room}`,
+    option.lecturer && `vyučující ${option.lecturer}`,
+    `rozvrhy ${option.sources.map((s) => s.id).join(', ')}`,
+    option.clashes.length ? `koliduje s ${option.clashes.map((c) => c.subject || 'hodinou').join(', ')}` : 'máš volno',
+  ];
+  return parts.filter(Boolean).join(', ');
+}
+
+function renderOption(option: ReplacementOption, lane: number, lanes: number, band: Band, overlay: GridOverlay, order: number): HTMLElement {
+  const color = paletteColor(option.color);
+  const busy = option.clashes.length > 0;
+  const [first, ...rest] = option.sources;
+  const el = h(
+    'button',
+    {
+      type: 'button',
+      class: `alt ${busy ? 'alt--clash' : 'alt--free'}${lanes > 1 ? ' alt--compact' : ''}`,
+      'data-option-key': option.key,
+      'aria-pressed': option.key === overlay.selectedKey ? 'true' : 'false',
+      'aria-label': optionLabel(option),
+      title: optionLabel(option),
+      style: [
+        `left:${pct(option.start - FIRST_HOUR)}`,
+        `width:${pct(option.duration)}`,
+        laneStyle(lane, lanes, band),
+        `--fill:${color.fill}`,
+        `--border:${color.border}`,
+        `--order:${order}`,
+      ].join(';'),
+    },
+    h('span', { class: 'alt-title' }, option.subject),
+    h('span', { class: 'alt-meta' }, h('span', {}, `${first?.id ?? ''}${rest.length ? ` +${rest.length}` : ''}`), h('span', {}, option.room)),
+  );
+  el.addEventListener('click', () => overlay.onSelect(option.key));
   return el;
 }
 
@@ -172,7 +241,7 @@ function renderCorner(schedule: Schedule, handlers: GridHandlers): HTMLElement {
   return h('div', { class: 'corner', role: 'columnheader' }, button);
 }
 
-export function renderGrid(schedule: Schedule, handlers: GridHandlers): HTMLElement {
+export function renderGrid(schedule: Schedule, handlers: GridHandlers, overlay?: GridOverlay): HTMLElement {
   const scrollHost = h('div', { class: 'board-scroll', tabindex: 0, role: 'region', 'aria-label': 'Týdenní rozvrh' });
   const hourLabels: HTMLElement[] = [];
   for (let hour = FIRST_HOUR; hour <= LAST_HOUR; hour++) {
@@ -181,7 +250,7 @@ export function renderGrid(schedule: Schedule, handlers: GridHandlers): HTMLElem
 
   const board = h(
     'div',
-    { class: 'board', role: 'grid', 'aria-label': 'Rozvrh' },
+    { class: `board${overlay ? ' board--finder' : ''}`, role: 'grid', 'aria-label': 'Rozvrh' },
     h(
       'div',
       { class: 'board-head', role: 'row' },
@@ -190,10 +259,23 @@ export function renderGrid(schedule: Schedule, handlers: GridHandlers): HTMLElem
     ),
   );
 
+  let order = 0;
   DAYS.forEach((dayName, day) => {
     const placed = layoutDay(schedule.lessons.filter((l) => l.day === day));
     const maxLanes = placed.reduce((m, p) => Math.max(m, p.lanes), 1);
-    const height = Math.max(BASE_ROW_HEIGHT, maxLanes * LANE_MIN_HEIGHT);
+    const ownHeight = Math.max(BASE_ROW_HEIGHT, maxLanes * LANE_MIN_HEIGHT);
+
+    // With the finder open, the same course from other timetables gets its
+    // own strip under the day's lessons, so a clash sits right below the
+    // lesson it clashes with.
+    const dayOptions = overlay?.options.filter((o) => o.day === day) ?? [];
+    const byId = new Map(dayOptions.map((o) => [o.key, o]));
+    const altPlaced = layoutDay(dayOptions.map((o) => ({ ...o, id: o.key })));
+    const altLanes = altPlaced.reduce((m, p) => Math.max(m, p.lanes), 0);
+    const altHeight = altLanes ? altLanes * ALT_LANE_HEIGHT + ALT_STRIP_PADDING : 0;
+    const height = ownHeight + altHeight;
+    const ownBand: Band = { top: 0, height: ownHeight / height };
+    const altBand: Band = { top: (ownHeight + ALT_STRIP_PADDING / 2) / height, height: (altHeight - ALT_STRIP_PADDING) / height };
 
     const track = h('div', { class: 'track', 'data-day': day, style: `--cols:${HOUR_COUNT}` });
     for (let hour = FIRST_HOUR; hour < LAST_HOUR; hour++) {
@@ -211,7 +293,24 @@ export function renderGrid(schedule: Schedule, handlers: GridHandlers): HTMLElem
       slot.addEventListener('click', () => handlers.onSlotClick(day, hour));
       track.append(slot);
     }
-    for (const p of placed) track.append(renderLesson(p.lesson, p.lane, p.lanes, handlers, scrollHost));
+    if (overlay && altLanes) {
+      track.append(h('div', { class: 'alt-strip', 'aria-hidden': 'true', style: `top:${ownBand.height * 100}%` }));
+      // Free options also light up their hours across the whole row.
+      for (const o of dayOptions.filter((o) => !o.clashes.length)) {
+        track.append(h('div', {
+          class: `alt-window${o.key === overlay.selectedKey ? ' alt-window--selected' : ''}`,
+          'aria-hidden': 'true',
+          style: `left:${pct(o.start - FIRST_HOUR)};width:${pct(o.duration)}`,
+        }));
+      }
+    }
+    for (const p of placed) {
+      const state = !overlay ? '' : p.lesson.id === overlay.skippedId ? ' lesson--skipped' : ' lesson--muted';
+      track.append(renderLesson(p.lesson, p.lane, p.lanes, handlers, scrollHost, ownBand, state));
+    }
+    if (overlay) {
+      for (const p of altPlaced) track.append(renderOption(byId.get(p.lesson.id)!, p.lane, p.lanes, altBand, overlay, order++));
+    }
 
     board.append(
       h(
