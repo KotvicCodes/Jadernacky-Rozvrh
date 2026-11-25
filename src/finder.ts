@@ -1,5 +1,5 @@
 /**
- * UI of the replacement finder ("Najít náhradu"): the dialog that picks the
+ * UI of the replacement finder ("Nahradit hodinu"): the dialog that picks the
  * lesson to skip and loads the official timetables, and the panel above the
  * timetable that lists what was found. The overlay on the timetable itself
  * is drawn by grid.ts.
@@ -68,7 +68,7 @@ export function openFinderDialog(lessons: readonly Lesson[], preselectId?: strin
     const form = h(
       'form',
       { method: 'dialog', class: 'lesson-form finder-form' },
-      h('h2', {}, 'Najít náhradní hodinu'),
+      h('h2', {}, 'Nahradit hodinu'),
       choices.length
         ? h('p', { class: 'hint' }, 'Vyber hodinu, na kterou nemůžeš přijít. Prohledám rozvrhy všech ročníků a ukážu, kdy se stejný předmět učí v čase, kdy máš volno.')
         : h('p', { class: 'hint' }, 'V tomhle rozvrhu zatím nejsou žádné hodiny. Přidej je nebo importuj rozvrh z webu FJFI.'),
@@ -76,7 +76,7 @@ export function openFinderDialog(lessons: readonly Lesson[], preselectId?: strin
       status,
       h('div', { class: 'dialog-actions' }, h('span', { class: 'spacer' }), cancelBtn, submitBtn),
     );
-    const dialog = h('dialog', { class: 'lesson-dialog finder-dialog', 'aria-label': 'Najít náhradní hodinu' }, form);
+    const dialog = h('dialog', { class: 'lesson-dialog finder-dialog', 'aria-label': 'Nahradit hodinu' }, form);
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();

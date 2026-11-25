@@ -308,7 +308,7 @@ export class App {
       fileInput.value = '';
     });
     const importMenu = this.renderImportMenu(() => fileInput.click());
-    const findBtn = h('button', { type: 'button', class: 'btn btn-find', 'aria-pressed': this.finder ? 'true' : 'false' }, 'Najít náhradu');
+    const findBtn = h('button', { type: 'button', class: 'btn btn-find', 'aria-pressed': this.finder ? 'true' : 'false' }, 'Nahradit hodinu');
     findBtn.addEventListener('click', () => void this.openFinder());
 
     // Two rows: the pickers, then all buttons in one row below them (it only
@@ -395,7 +395,7 @@ export class App {
 
   private searching = false;
 
-  /** "Najít náhradu": pick the lesson to skip, search every official timetable, then show the overlay. */
+  /** "Nahradit hodinu": pick the lesson to skip, search every official timetable, then show the overlay. */
   private async openFinder(): Promise<void> {
     if (this.searching) return;
     this.searching = true;

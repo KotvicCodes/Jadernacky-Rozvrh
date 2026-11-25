@@ -109,7 +109,7 @@ describe('loadCatalog', () => {
   });
 });
 
-describe('Najít náhradu', () => {
+describe('Nahradit hodinu', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('highlights the same course from other timetables over the active timetable', async () => {
@@ -124,7 +124,7 @@ describe('Najít náhradu', () => {
     document.body.append(root);
     new App(root);
 
-    [...root.querySelectorAll<HTMLButtonElement>('.toolbar button')].find((b) => b.textContent === 'Najít náhradu')!.click();
+    [...root.querySelectorAll<HTMLButtonElement>('.toolbar button')].find((b) => b.textContent === 'Nahradit hodinu')!.click();
     await vi.waitFor(() => expect(document.querySelector('dialog .finder-choices')).not.toBeNull());
     // Only lessons with a subject are offered, by day and time.
     expect([...document.querySelectorAll('.finder-choice-code')].map((el) => el.textContent)).toEqual(['MAN1cv', 'LAL1']);

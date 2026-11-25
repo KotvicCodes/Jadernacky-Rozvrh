@@ -1,4 +1,4 @@
-/* Replacement finder ("Najít náhradu"): src/finder.ts and the overlay drawn by src/grid.ts.
+/* Replacement finder ("Nahradit hodinu"): src/finder.ts and the overlay drawn by src/grid.ts.
    Free options keep their department colour and get a brand ring; clashes are grey and hatched. */
 :root {
   --find-tint: rgb(3 101 169 / 0.07);

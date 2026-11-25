@@ -1,5 +1,5 @@
 /**
- * "Najít náhradu": a student who has to miss a lesson looks for the same
+ * "Nahradit hodinu": a student who has to miss a lesson looks for the same
  * course (the very same code) in every other official timetable and sees
  * which of those lessons fall into their free time.
  */
