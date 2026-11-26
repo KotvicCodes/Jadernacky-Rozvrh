@@ -225,11 +225,20 @@ describe('closing timetable tabs', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('shows a labelled × on every tab, outside the tab order', () => {
-    expect(closeButtons().map((b) => b.getAttribute('aria-label'))).toEqual(['Zavřít rozvrh Rozvrh 1', 'Zavřít rozvrh Rozvrh 2', 'Zavřít rozvrh Rozvrh 3']);
-    expect(closeButtons().every((b) => b.tabIndex === -1)).toBe(true);
-    // The tablist still holds only tabs (and the + button) for assistive tech.
+  it('shows a × with a tooltip on every tab, outside the tab order and the tablist\'s accessibility tree', () => {
+    expect(closeButtons().map((b) => b.title)).toEqual(['Zavřít rozvrh Rozvrh 1', 'Zavřít rozvrh Rozvrh 2', 'Zavřít rozvrh Rozvrh 3']);
+    expect(closeButtons().every((b) => b.tabIndex === -1 && b.getAttribute('aria-hidden') === 'true')).toBe(true);
+    // Assistive tech gets Delete on the tab instead, and the tablist holds only tabs (and +).
+    expect(tabs(root).every((t) => t.getAttribute('aria-keyshortcuts')!.includes('Delete'))).toBe(true);
     expect([...root.querySelectorAll('.tab-item')].every((item) => item.getAttribute('role') === 'presentation')).toBe(true);
+  });
+
+  it('ignores Delete and ⌫ with modifier keys on a tab', () => {
+    for (const mod of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+      tabs(root)[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, ...mod }));
+    }
+    expect(confirm).not.toHaveBeenCalled();
+    expect(loadState().schedules).toHaveLength(3);
   });
 
   it('asks first, and keeps everything when the answer is no', () => {
@@ -442,6 +451,16 @@ describe('toolbar and header', () => {
 
 describe('Stáhnout menu', () => {
   beforeEach(() => vi.mocked(downloadPdf).mockClear() && vi.mocked(downloadPng).mockClear());
+
+  it('keeps focus in the menu when an item is pressed, so Safari does not close it before the click', () => {
+    const root = setup();
+    const { button, menu, items } = menuFor(root, 'Stáhnout');
+    button.click();
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    items[1]!.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+    expect(menu.hidden).toBe(false);
+  });
 
   it('offers PDF and PNG in one menu that works like Importovat', () => {
     const root = setup();

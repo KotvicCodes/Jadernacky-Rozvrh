@@ -177,6 +177,60 @@ describe('Nahradit hodinu', () => {
   });
 });
 
+describe('Nahradit hodinu while editing the timetable', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function openFinder(files: string[]) {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.dispatchEvent(new Event('close')); };
+    stubCatalog(files);
+    localStorage.clear();
+    const own = [lesson('cv', 0, 10, 2, 'MAN1cv', 'T-201'), lesson('lal', 1, 8, 2, 'LAL1')];
+    saveState({ schedules: [{ id: 's1', name: '', specId: 'JCF1', lessons: own, updatedAt: 0 }], activeId: 's1' });
+    document.body.replaceChildren();
+    const root = document.createElement('div');
+    document.body.append(root);
+    new App(root);
+    [...root.querySelectorAll<HTMLButtonElement>('.toolbar button')].find((b) => b.textContent === 'Nahradit hodinu')!.click();
+    await vi.waitFor(() => expect(document.querySelector('dialog .finder-choices')).not.toBeNull());
+    document.querySelector<HTMLFormElement>('dialog form')!.requestSubmit();
+    await vi.waitFor(() => expect(root.querySelector('.finder-panel')).not.toBeNull());
+    return root;
+  }
+
+  it('cancels a lesson drag with Escape without closing the search', async () => {
+    const root = await openFinder(['f1-a.json', 'f2-a.json', 'f3-a.json']);
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const el = root.querySelector<HTMLElement>('[data-lesson-id="lal"]')!;
+    Object.assign(el, { setPointerCapture: vi.fn(), hasPointerCapture: vi.fn(() => true), releasePointerCapture: vi.fn() });
+    const pointer = (type: string, x: number) => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+      Object.entries({ pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: 10 }).forEach(([key, value]) => Object.defineProperty(event, key, { value }));
+      el.dispatchEvent(event);
+    };
+    pointer('pointerdown', 10);
+    pointer('pointermove', 60);
+    expect(el.classList.contains('lesson--dragging')).toBe(true);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(el.classList.contains('lesson--dragging')).toBe(false);
+    expect(root.querySelector('.finder-panel')).not.toBeNull();
+    // Without a drag, Escape still closes the search.
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(root.querySelector('.finder-panel')).toBeNull();
+  });
+
+  it('brings the search back with Vrátit after deleting the lesson being replaced', async () => {
+    const root = await openFinder(['g1-a.json', 'g2-a.json', 'g3-a.json']);
+    root.querySelector<HTMLElement>('[data-lesson-id="cv"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    expect(root.querySelector('.finder-panel')).toBeNull();
+    [...root.querySelectorAll<HTMLButtonElement>('.status-line button')].find((b) => b.textContent === 'Vrátit')!.click();
+    expect(root.querySelector('[data-lesson-id="cv"]')!.className).toContain('lesson--skipped');
+    expect(root.querySelector('.finder-panel')).not.toBeNull();
+    expect(root.querySelectorAll('.alt').length).toBeGreaterThan(0);
+  });
+});
+
 describe('Nahradit hodinu dialog', () => {
   it('lists each subject once and asks which lesson only for subjects taught more than once a week', async () => {
     HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };

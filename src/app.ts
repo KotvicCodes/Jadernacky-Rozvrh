@@ -167,8 +167,10 @@ export class App {
         label,
       );
       // A sibling of the tab (buttons cannot nest), shown inside its right edge.
-      // Keyboard users press Delete on the tab instead, so it stays out of the tab order.
-      const close = h('button', { type: 'button', class: 'tab-close', tabindex: -1, 'aria-label': `Zavřít rozvrh ${label}`, title: `Zavřít rozvrh ${label}` }, '×');
+      // Keyboard and screen-reader users press Delete on the tab instead (it is
+      // in the tab's aria-keyshortcuts), so the × stays out of the tab order and
+      // out of the tablist's accessibility tree, which may only hold tabs.
+      const close = h('button', { type: 'button', class: 'tab-close', tabindex: -1, 'aria-hidden': 'true', title: `Zavřít rozvrh ${label}` }, '×');
       close.addEventListener('click', () => this.deleteSchedule(s.id));
       const item = h('div', { class: 'tab-item', role: 'presentation' }, tab, close);
       enableTabDrag(item, tab, {
@@ -195,7 +197,7 @@ export class App {
         if (e.key === 'F2') {
           e.preventDefault();
           this.renameSchedule(s.id);
-        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        } else if ((e.key === 'Delete' || e.key === 'Backspace') && !e.altKey && !e.ctrlKey && !e.metaKey) {
           // ⌫ is the Delete key on a Mac keyboard.
           e.preventDefault();
           this.deleteSchedule(s.id);
@@ -484,7 +486,6 @@ export class App {
     if (hadFocus) this.boardHost.querySelector<HTMLElement>(`[data-lesson-id="${CSS.escape(lesson.id)}"]`)?.focus();
   }
 
-  /** Stáhnout → PDF / PNG. The Stáhnout button stays disabled until the file is ready. */
   /**
    * Deletes a lesson dropped off the timetable (or Delete on it), like the
    * dialog's Smazat, and offers to undo it for a while: a drag can end
@@ -495,6 +496,9 @@ export class App {
     const index = schedule.lessons.findIndex((l) => l.id === lesson.id);
     if (index < 0) return;
     const hadFocus = document.activeElement?.closest('[data-lesson-id]') !== null;
+    // Deleting the lesson that Nahradit hodinu is replacing ends that search;
+    // keep it so Vrátit can bring it back with the lesson.
+    const finder = this.finder?.scheduleId === schedule.id && this.finder.search.skippedId === lesson.id ? this.finder : null;
     const [removed] = schedule.lessons.splice(index, 1);
     const name = removed!.subject || 'Hodina';
     const saved = this.commit(`Smazáno: ${name}`, schedule);
@@ -510,6 +514,7 @@ export class App {
       cancel();
       if (!this.state.schedules.includes(schedule) || schedule.lessons.some((l) => l.id === removed!.id)) return;
       schedule.lessons.splice(Math.min(index, schedule.lessons.length), 0, removed!);
+      if (finder && !this.finder && this.active === schedule) this.finder = finder;
       this.commit(`Vráceno: ${name}`, schedule);
       if (this.active === schedule) [...this.boardHost.querySelectorAll<HTMLElement>('[data-lesson-id]')].find((el) => el.dataset.lessonId === removed!.id)?.focus();
     };
@@ -535,6 +540,7 @@ export class App {
     const timer = setTimeout(cancel, UNDO_MS);
   }
 
+  /** Stáhnout → PDF / PNG. The Stáhnout button stays disabled until the file is ready. */
   private async runExport(kind: 'pdf' | 'png'): Promise<void> {
     if (this.exporting) return;
     this.exporting = true;
