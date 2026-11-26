@@ -18,6 +18,8 @@ export function enablePointerDrag(el: HTMLElement, options: {
   let dragging = false;
   let frame = 0;
   let suppressClick = false;
+  /** Escape released a press before it became a drag: its click is cancelled too. */
+  let cancelledPress = false;
 
   const stop = (cancelled: boolean) => {
     const wasDragging = dragging;
@@ -41,8 +43,9 @@ export function enablePointerDrag(el: HTMLElement, options: {
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     // Cancelling a drag consumes the key; a mere press (no drag yet) is
-    // released and the key is left to the page.
+    // released, its click cancelled, and the key left to the page.
     if (dragging) e.preventDefault();
+    else cancelledPress = true;
     stop(true);
   };
   const onExtraPointer = (e: PointerEvent) => {
@@ -73,6 +76,7 @@ export function enablePointerDrag(el: HTMLElement, options: {
 
   el.addEventListener('pointerdown', (e) => {
     if (pointerId !== null || !e.isPrimary || e.button !== 0) return;
+    cancelledPress = false;
     origin = point = { x: e.clientX, y: e.clientY };
     pointerId = e.pointerId;
     // Capture immediately: a quick move can leave a small lesson or tab before
@@ -102,8 +106,8 @@ export function enablePointerDrag(el: HTMLElement, options: {
   el.addEventListener('pointercancel', (e) => { if (e.pointerId === pointerId) stop(true); });
   el.addEventListener('lostpointercapture', (e) => { if (e.pointerId === pointerId) stop(true); });
   el.addEventListener('click', (e) => {
-    if (suppressClick) {
-      suppressClick = false;
+    if (suppressClick || cancelledPress) {
+      suppressClick = cancelledPress = false;
       e.preventDefault();
       e.stopImmediatePropagation();
     }

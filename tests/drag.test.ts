@@ -76,10 +76,20 @@ describe('pointer dragging', () => {
     document.body.dispatchEvent(key);
     expect(key.defaultPrevented).toBe(false);
     expect(onCancel).not.toHaveBeenCalled();
-    // The press is released, so moving on does not start a drag.
+    // The press is released, so moving on does not start a drag...
     expect(button.releasePointerCapture).toHaveBeenCalled();
     pointer(button, 'pointermove', { clientX: 120 });
     expect(onStart).not.toHaveBeenCalled();
+    // ...and releasing does not click it either.
+    const onClick = vi.fn();
+    button.addEventListener('click', onClick);
+    button.click();
+    expect(onClick).not.toHaveBeenCalled();
+    // The next press clicks normally.
+    pointer(button, 'pointerdown');
+    pointer(button, 'pointerup');
+    button.click();
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
   it('ignores secondary pointers and cancels on Escape', () => {

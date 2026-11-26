@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HOUR_COUNT } from '../src/config';
-import { DELETE_DISTANCE, dropStart, isOutside, renderGrid } from '../src/grid';
+import { DELETE_DISTANCE, REARM_DISTANCE, dropStart, isOutside, renderGrid } from '../src/grid';
 import { createSchedule, normalizeLesson } from '../src/model';
 
 describe('renderGrid', () => {
@@ -180,35 +180,53 @@ describe('deleting a lesson by dragging it off the timetable', () => {
     expect(handlers.onLessonMove).not.toHaveBeenCalled();
   });
 
-  it('never arms a delete when auto-scrolling moves the timetable away from a still pointer', () => {
-    const { grid, el, handlers, pointer } = setup();
-    pointer('pointerdown', 350, 230);
-    pointer('pointermove', 500, 490); // inside the timetable, near its bottom
-    // The page auto-scrolls to its end: the timetable moves 200 px up under the pointer.
-    grid.getBoundingClientRect = () => ({ ...box, top: box.top - 200, bottom: box.bottom - 200, width: 800, height: 400 }) as DOMRect;
-    grid.querySelectorAll<HTMLElement>('.track').forEach((track, day) => {
-      track.getBoundingClientRect = () => ({ left: 220, right: 900, top: day * 64 - 60, bottom: day * 64 + 4, width: 680, height: 64 }) as DOMRect;
-    });
-    pointer('pointermove', 500, 490); // same spot: an auto-scroll tick, not a move
-    expect(el.classList.contains('lesson--deleting')).toBe(false);
-    pointer('pointerup', 500, 490);
-    expect(handlers.onLessonDelete).not.toHaveBeenCalled();
-  });
+  describe('while the page auto-scrolls', () => {
+    /** Scrolls the page by `dy`: window.scrollY changes and the timetable moves up on screen. */
+    function scrollPage(grid: HTMLElement, dy: number) {
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: dy });
+      grid.getBoundingClientRect = () => ({ ...box, top: box.top - dy, bottom: box.bottom - dy, width: 800, height: 400 }) as DOMRect;
+      grid.querySelectorAll<HTMLElement>('.track').forEach((track, day) => {
+        track.getBoundingClientRect = () => ({ left: 220, right: 900, top: 140 + day * 64 - dy, bottom: 204 + day * 64 - dy, width: 680, height: 64 }) as DOMRect;
+      });
+    }
+    afterEach(() => Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 }));
 
-  it('arms a delete as soon as the pointer itself moves while outside', () => {
-    const { grid, el, pointer } = setup();
-    pointer('pointerdown', 350, 230);
-    pointer('pointermove', 500, 490);
-    grid.getBoundingClientRect = () => ({ ...box, top: box.top - 200, bottom: box.bottom - 200, width: 800, height: 400 }) as DOMRect;
-    grid.querySelectorAll<HTMLElement>('.track').forEach((track) => (track.getBoundingClientRect = () => ({ left: 220, right: 900, top: -500, bottom: -436, width: 680, height: 64 }) as DOMRect));
-    pointer('pointermove', 500, 490);
-    expect(el.classList.contains('lesson--deleting')).toBe(false);
-    pointer('pointermove', 500, 495);
-    expect(el.classList.contains('lesson--deleting')).toBe(true);
-    // Once armed it stays armed while the pointer rests outside.
-    pointer('pointermove', 500, 495);
-    expect(el.classList.contains('lesson--deleting')).toBe(true);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    it('never arms a delete for a pointer held still, even after the page stops at its end', () => {
+      const { grid, el, handlers, pointer } = setup();
+      pointer('pointerdown', 350, 230);
+      pointer('pointermove', 500, 490); // inside the timetable, near its bottom
+      scrollPage(grid, 200);
+      pointer('pointermove', 500, 490); // an auto-scroll tick: the timetable is now far above
+      expect(el.classList.contains('lesson--deleting')).toBe(false);
+      pointer('pointermove', 500, 490); // the page has stopped scrolling
+      pointer('pointermove', 500.6, 490.4); // a hand or finger trembling
+      expect(el.classList.contains('lesson--deleting')).toBe(false);
+      pointer('pointerup', 500, 490);
+      expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+    });
+
+    it('arms once the pointer moves REARM_DISTANCE by itself after the scroll', () => {
+      const { grid, el, pointer } = setup();
+      pointer('pointerdown', 350, 230);
+      pointer('pointermove', 500, 490);
+      scrollPage(grid, 200);
+      pointer('pointermove', 500, 490);
+      pointer('pointermove', 500, 490 + REARM_DISTANCE);
+      expect(el.classList.contains('lesson--deleting')).toBe(true);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    });
+
+    it('disarms while the page scrolls, even after the pointer was dragged off on purpose', () => {
+      const { grid, el, handlers, pointer } = setup();
+      pointer('pointerdown', 350, 230);
+      pointer('pointermove', 500, 600);
+      expect(el.classList.contains('lesson--deleting')).toBe(true);
+      scrollPage(grid, 30);
+      pointer('pointermove', 500, 600);
+      expect(el.classList.contains('lesson--deleting')).toBe(false);
+      pointer('pointerup', 500, 600);
+      expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+    });
   });
 
   it('deletes with Delete or Backspace on a focused lesson', () => {
