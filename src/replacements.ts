@@ -47,6 +47,15 @@ export function subjectKey(subject: string): string {
   return subject.normalize('NFC').replace(/\s+/g, '').toLowerCase();
 }
 
+/**
+ * Whether a lesson can be replaced here. Language lessons (JAZ, JAZ.2,
+ * JAZ3cv, …) are left out: they don't work with how lessons are matched.
+ */
+export function isReplaceable(subject: string): boolean {
+  const key = subjectKey(subject);
+  return key !== '' && !key.startsWith('jaz');
+}
+
 type Slot = Pick<LessonDraft, 'day' | 'start' | 'duration'>;
 
 export function overlaps(a: Slot, b: Slot): boolean {
@@ -63,7 +72,7 @@ const sameSlot = (a: Slot, b: Slot) => a.day === b.day && a.start === b.start &&
  */
 export function findReplacements(own: readonly Lesson[], skipped: Lesson, catalog: readonly CatalogTimetable[]): ReplacementOption[] {
   const key = subjectKey(skipped.subject);
-  if (!key) return [];
+  if (!isReplaceable(skipped.subject)) return [];
   const mine = own.filter((l) => subjectKey(l.subject) === key);
   const merged = new Map<string, ReplacementOption>();
   for (const timetable of catalog) {

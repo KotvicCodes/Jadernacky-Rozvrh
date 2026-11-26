@@ -44,6 +44,13 @@ describe('findReplacements', () => {
     expect(sourceNames(options[2]!)).toBe('JCF2, JCF');
   });
 
+  it('never offers language lessons, whatever their suffix', () => {
+    for (const subject of ['JAZ', 'JAZ.2', 'jaz3', 'JAZ.3cv', 'Jaz 2']) {
+      const skipped = lesson('j', 0, 8, 2, subject);
+      expect(findReplacements([skipped], skipped, [{ id: 'a', short: 'a', label: 'a', lessons: [draft(1, 8, 2, subject)] }])).toEqual([]);
+    }
+  });
+
   it('finds nothing for an untitled lesson', () => {
     expect(findReplacements(own, lesson('x', 0, 8, 1, ''), [{ id: 'a', short: 'a', label: 'a', lessons: [draft(1, 8, 1, '')] }])).toEqual([]);
   });
@@ -180,6 +187,8 @@ describe('Nahradit hodinu dialog', () => {
       lesson('lal', 1, 8, 2, 'LAL1'),
       lesson('mon', 0, 10, 2, 'ana3 cv', 'T-210', 'Fučík'),
       lesson('none', 2, 8, 1, ''),
+      lesson('jaz', 1, 16, 2, 'JAZ.2'),
+      lesson('jaz3', 4, 8, 2, 'jaz3 cv'),
     ];
     expect(groupBySubject(lessons).map((g) => g.map((l) => l.id))).toEqual([['mon', 'thu'], ['lal']]);
 
@@ -189,6 +198,7 @@ describe('Nahradit hodinu dialog', () => {
     const submit = document.querySelector<HTMLButtonElement>('dialog button[type="submit"]')!;
     expect([...document.querySelectorAll('.finder-choice-code')].map((el) => el.textContent)).toEqual(['ana3 cv', 'LAL1']);
     expect(document.querySelector('.finder-choice .finder-choice-when')!.textContent).toBe('2× týdně');
+    expect(document.querySelector('.finder-languages')!.textContent).toBe('Jazyky (JAZ) tu nahradit nejde.');
 
     // A subject taught twice: the student has to say which lesson they will miss.
     expect(occurrences.hidden).toBe(false);
