@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app';
+import { groupBySubject, openFinderDialog } from '../src/finder';
 import { loadCatalog } from '../src/import/catalog';
 import { normalizeLesson, type Lesson, type LessonDraft } from '../src/model';
 import { findReplacements, sourceNames, subjectKey, type CatalogTimetable } from '../src/replacements';
@@ -166,5 +167,47 @@ describe('Nahradit hodinu', () => {
     expect(root.querySelector('.finder-panel')).toBeNull();
     expect(root.querySelector('.alt')).toBeNull();
     expect(root.querySelector('.board--finder')).toBeNull();
+  });
+});
+
+describe('Nahradit hodinu dialog', () => {
+  it('lists each subject once and asks which lesson only for subjects taught more than once a week', async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.dispatchEvent(new Event('close')); };
+    document.body.replaceChildren();
+    const lessons = [
+      lesson('thu', 3, 10, 2, 'ANA3cv', 'T-211'),
+      lesson('lal', 1, 8, 2, 'LAL1'),
+      lesson('mon', 0, 10, 2, 'ana3 cv', 'T-210', 'Fučík'),
+      lesson('none', 2, 8, 1, ''),
+    ];
+    expect(groupBySubject(lessons).map((g) => g.map((l) => l.id))).toEqual([['mon', 'thu'], ['lal']]);
+
+    const picked = openFinderDialog(lessons);
+    const subjects = () => [...document.querySelectorAll<HTMLInputElement>('input[name="subject"]')];
+    const occurrences = document.querySelector<HTMLFieldSetElement>('.finder-occurrences')!;
+    const submit = document.querySelector<HTMLButtonElement>('dialog button[type="submit"]')!;
+    expect([...document.querySelectorAll('.finder-choice-code')].map((el) => el.textContent)).toEqual(['ana3 cv', 'LAL1']);
+    expect(document.querySelector('.finder-choice .finder-choice-when')!.textContent).toBe('2× týdně');
+
+    // A subject taught twice: the student has to say which lesson they will miss.
+    expect(occurrences.hidden).toBe(false);
+    expect(occurrences.querySelector('legend')!.textContent).toBe('Kterou hodinu ana3 cv vynecháš?');
+    expect([...occurrences.querySelectorAll('.finder-occurrence .finder-choice-when')].map((el) => el.textContent))
+      .toEqual(['Po 10:00–12:00', 'Čt 10:00–12:00']);
+    expect(submit.disabled).toBe(true);
+    const thursday = occurrences.querySelector<HTMLInputElement>('input[value="thu"]')!;
+    thursday.checked = true;
+    thursday.dispatchEvent(new Event('change'));
+    expect(submit.disabled).toBe(false);
+
+    // A subject taught once needs no second question.
+    subjects()[1]!.checked = true;
+    subjects()[1]!.dispatchEvent(new Event('change'));
+    expect(occurrences.hidden).toBe(true);
+    expect(submit.disabled).toBe(false);
+
+    document.querySelector<HTMLButtonElement>('dialog .btn:not(.btn-primary)')!.click();
+    expect(await picked).toBeNull();
   });
 });

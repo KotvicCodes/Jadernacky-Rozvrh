@@ -8,7 +8,7 @@ import { DAYS, paletteColor } from './config';
 import { closeOnBackdropClick } from './dialog';
 import { h } from './dom';
 import { formatHour, type Lesson } from './model';
-import { sourceNames, type CatalogTimetable, type ReplacementOption } from './replacements';
+import { sourceNames, subjectKey, type CatalogTimetable, type ReplacementOption } from './replacements';
 import './finder.css';
 
 export interface FinderSearch {
@@ -28,56 +28,119 @@ function countLabel(n: number, one: string, few: string, many: string): string {
   return `${n} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`;
 }
 
+/** The student's lessons grouped by course code, each group by time; groups in order of their first lesson. */
+export function groupBySubject(lessons: readonly Lesson[]): Lesson[][] {
+  const groups = new Map<string, Lesson[]>();
+  const sorted = lessons
+    .filter((l) => l.subject.trim())
+    .sort((a, b) => a.day - b.day || a.start - b.start || a.subject.localeCompare(b.subject, 'cs'));
+  for (const lesson of sorted) {
+    const key = subjectKey(lesson.subject);
+    const group = groups.get(key);
+    if (group) group.push(lesson);
+    else groups.set(key, [lesson]);
+  }
+  return [...groups.values()];
+}
+
 /**
- * Asks which lesson the student will miss, then loads every official
- * timetable. Resolves null when cancelled.
+ * Asks which lesson the student will miss: first the subject (each listed
+ * once), then, for a subject taught more than once a week, which of its
+ * lessons. Then loads every official timetable. Resolves null when cancelled.
  */
 export function openFinderDialog(lessons: readonly Lesson[], preselectId?: string): Promise<FinderSearch | null> {
   return new Promise((resolve) => {
     const abort = new AbortController();
     let result: FinderSearch | null = null;
-    const choices = lessons
-      .filter((l) => l.subject.trim())
-      .sort((a, b) => a.day - b.day || a.start - b.start || a.subject.localeCompare(b.subject, 'cs'));
-    const selected = choices.find((l) => l.id === preselectId) ?? choices[0];
+    const groups = groupBySubject(lessons);
+    const preselected = groups.find((g) => g.some((l) => l.id === preselectId));
+    let current = preselected ?? groups[0];
 
-    const options = h(
+    const subjects = h(
       'div',
-      { class: 'finder-choices', role: 'radiogroup', 'aria-label': 'Hodina, kterou vynecháš' },
-      ...choices.map((lesson) => {
-        const color = paletteColor(lesson.color);
+      { class: 'finder-choices', role: 'radiogroup', 'aria-label': 'Předmět' },
+      ...groups.map((group, index) => {
+        const first = group[0]!;
+        const color = paletteColor(first.color);
+        const input = h('input', { type: 'radio', name: 'subject', value: index, checked: group === current });
+        input.addEventListener('change', () => {
+          current = group;
+          fillOccurrences();
+          if (group.length > 1) occurrences.scrollIntoView?.({ block: 'nearest' });
+        });
         return h(
           'label',
           { class: 'finder-choice', style: `--fill:${color.fill};--border:${color.border}` },
-          h('input', { type: 'radio', name: 'skip', value: lesson.id, checked: lesson === selected }),
-          h('span', { class: 'finder-choice-code' }, lesson.subject),
-          h('span', { class: 'finder-choice-when' }, slotLabel(lesson, true)),
-          h('span', { class: 'finder-choice-where' }, [lesson.room, lesson.lecturer].filter(Boolean).join(' · ') || '—'),
+          input,
+          h('span', { class: 'finder-choice-code' }, first.subject),
+          group.length === 1
+            ? h('span', { class: 'finder-choice-when' }, slotLabel(first, true))
+            : h('span', { class: 'finder-choice-when' }, `${group.length}× týdně`),
+          group.length === 1
+            ? h('span', { class: 'finder-choice-where' }, [first.room, first.lecturer].filter(Boolean).join(' · ') || '—')
+            : h('span', { class: 'finder-choice-where' }, group.map((l) => `${SHORT_DAYS[l.day]} ${formatHour(l.start)}`).join(', ')),
         );
       }),
     );
+
+    // Second question, only for a subject taught more than once a week.
+    const occurrenceLegend = h('legend', {});
+    const occurrenceList = h('div', { class: 'finder-occurrence-list' });
+    const occurrences = h('fieldset', { class: 'finder-occurrences', hidden: true }, occurrenceLegend, occurrenceList);
+    const fillOccurrences = () => {
+      const group = current;
+      const multiple = !!group && group.length > 1;
+      occurrences.hidden = !multiple;
+      occurrenceList.replaceChildren(...(multiple ? group : []).map((lesson) => {
+        const input = h('input', { type: 'radio', name: 'skip', value: lesson.id, checked: lesson.id === preselectId });
+        input.addEventListener('change', updateSubmit);
+        return h(
+          'label',
+          { class: 'finder-occurrence' },
+          input,
+          h('span', { class: 'finder-choice-when' }, slotLabel(lesson, true)),
+          h('span', { class: 'finder-choice-where' }, [lesson.room, lesson.lecturer].filter(Boolean).join(' · ') || '—'),
+        );
+      }));
+      if (multiple) occurrenceLegend.textContent = `Kterou hodinu ${group[0]!.subject} vynecháš?`;
+      updateSubmit();
+    };
+    const skippedId = () => (current && current.length === 1
+      ? current[0]!.id
+      : form.querySelector<HTMLInputElement>('input[name="skip"]:checked')?.value);
+
     const status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
     const cancelBtn = h('button', { type: 'button', class: 'btn' }, 'Zrušit');
-    const submitBtn = h('button', { type: 'submit', class: 'btn btn-primary', disabled: !choices.length }, 'Hledat náhradu');
+    const submitBtn = h('button', { type: 'submit', class: 'btn btn-primary', disabled: true }, 'Hledat náhradu');
+    let loading = false;
+    const updateSubmit = () => {
+      submitBtn.disabled = loading || !skippedId();
+    };
     const form = h(
       'form',
       { method: 'dialog', class: 'lesson-form finder-form' },
       h('h2', {}, 'Nahradit hodinu'),
-      choices.length
-        ? h('p', { class: 'hint' }, 'Vyber hodinu, na kterou nemůžeš přijít. Prohledám rozvrhy všech ročníků a ukážu, kdy se stejný předmět učí v čase, kdy máš volno.')
+      groups.length
+        ? h('p', { class: 'hint' }, 'Vyber předmět, na který nemůžeš přijít. Prohledám rozvrhy všech ročníků a ukážu, kdy se stejný předmět učí v čase, kdy máš volno.')
         : h('p', { class: 'hint' }, 'V tomhle rozvrhu zatím nejsou žádné hodiny. Přidej je nebo importuj rozvrh z webu FJFI.'),
-      choices.length ? options : null,
+      groups.length ? subjects : null,
+      occurrences,
       status,
       h('div', { class: 'dialog-actions' }, h('span', { class: 'spacer' }), cancelBtn, submitBtn),
     );
     const dialog = h('dialog', { class: 'lesson-dialog finder-dialog', 'aria-label': 'Nahradit hodinu' }, form);
+    const lock = (on: boolean) => {
+      loading = on;
+      form.querySelectorAll('input').forEach((input) => (input.disabled = on));
+      updateSubmit();
+    };
+    fillOccurrences();
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      const skippedId = form.querySelector<HTMLInputElement>('input[name="skip"]:checked')?.value;
-      if (!skippedId) return;
-      submitBtn.disabled = true;
-      options.querySelectorAll('input').forEach((input) => (input.disabled = true));
+      const id = skippedId();
+      if (!id || loading) return;
+      lock(true);
       status.classList.remove('finder-error');
       status.textContent = 'Načítám seznam rozvrhů…';
       void (async () => {
@@ -86,14 +149,13 @@ export function openFinderDialog(lessons: readonly Lesson[], preselectId?: strin
           const catalog = await loadCatalog((done, total) => {
             status.textContent = `Prohledávám rozvrhy… ${done}/${total}`;
           }, abort.signal);
-          result = { skippedId, timetables: catalog.timetables, failed: catalog.failed };
+          result = { skippedId: id, timetables: catalog.timetables, failed: catalog.failed };
           dialog.close();
         } catch (err) {
           if (abort.signal.aborted) return;
           status.textContent = err instanceof Error ? err.message : 'Rozvrhy se nepodařilo načíst.';
           status.classList.add('finder-error');
-          submitBtn.disabled = false;
-          options.querySelectorAll('input').forEach((input) => (input.disabled = false));
+          lock(false);
         }
       })();
     });
@@ -107,7 +169,7 @@ export function openFinderDialog(lessons: readonly Lesson[], preselectId?: strin
 
     document.body.append(dialog);
     dialog.showModal();
-    (form.querySelector<HTMLInputElement>('input[name="skip"]:checked') ?? cancelBtn).focus();
+    (form.querySelector<HTMLInputElement>('input[name="subject"]:checked') ?? cancelBtn).focus();
   });
 }
 
@@ -175,7 +237,7 @@ export function renderFinderPanel(props: FinderPanelProps): HTMLElement {
     ? h('ol', { class: 'finder-list', 'aria-label': 'Volné termíny' }, ...free.map(item))
     : h('p', { class: 'finder-empty' }, options.length
       ? 'Žádný termín nevychází do tvého volného času. Termíny v kolizi najdeš níže.'
-      : `V ostatních rozvrzích se předmět ${skipped.subject} nevyskytuje. Zkontroluj, že kód odpovídá oficiálnímu rozvrhu.`);
+      : `Předmět ${skipped.subject} se v ostatních rozvrzích neučí v žádném jiném čase. Pokud by měl, zkontroluj, že kód odpovídá oficiálnímu rozvrhu.`);
 
   let clashSection: HTMLElement | null = null;
   if (clashing.length) {
