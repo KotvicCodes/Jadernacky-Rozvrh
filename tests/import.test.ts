@@ -155,6 +155,18 @@ describe('recognizeOfficial', () => {
   });
 });
 
+describe('recognizeOfficial language labels', () => {
+  it('reads a language lesson as JAZ.n even when every zoom drops the dot', async () => {
+    const titles = ['JAZ3', 'JAZ 3', 'JAZ3', 'JAZ.3'];
+    let call = 0;
+    const engine: OcrEngine = {
+      read: async (_img, kind) => ({ text: kind === 'title' ? titles[call++ % titles.length]! : { lecturer: '', room: '', spec: 'JCF1' }[kind], confidence: 90 }),
+    };
+    const result = (await recognizeOfficial(fixture('Bc1JCF1'), engine))!;
+    expect(new Set(result.lessons.map((lesson) => lesson.subject))).toEqual(new Set(['JAZ.3']));
+  });
+});
+
 describe('pickReading', () => {
   it('prefers what several zooms agree on over one confident outlier', () => {
     expect(pickReading([{ text: '1', confidence: 96 }, { text: 'CH1', confidence: 85 }, { text: 'CH1', confidence: 92 }, { text: 'cl', confidence: 69 }])).toBe('CH1');
@@ -176,6 +188,12 @@ describe('OCR clean-up', () => {
     expect(cleanTitle('FANAlov')).toBe('FANAlcv');
     expect(cleanTitle('FANAlcy')).toBe('FANAlcv');
     expect(cleanTitle('BIOW')).toBe('BIOW'); // Upper-case course letters are not suffix errors.
+    // Generic language labels keep the dot that small print loses.
+    for (const read of ['JAZ3', 'JAZ.3', 'JAZ 3', ' jaz3 ']) expect(cleanTitle(read)).toBe('JAZ.3');
+    expect(cleanTitle('JAZ2cv')).toBe('JAZ.2cv');
+    expect(cleanTitle('JAZ2cY')).toBe('JAZ.2cv');
+    expect(cleanTitle('JAZ')).toBe('JAZ');
+    expect(cleanTitle('JAZK1')).toBe('JAZK1');
     expect(cleanRoom('8-103')).toBe('B-103');
     expect(cleanRoom('1-201')).toBe('T-201');
     expect(cleanRoom('klff-121')).toBe('KLFF-121');
