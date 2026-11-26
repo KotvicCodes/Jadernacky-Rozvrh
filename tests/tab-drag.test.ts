@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tabDragFrame, type TabSlot } from '../src/tab-drag';
+import { CANCEL_DISTANCE, nearBar, tabDragFrame, type TabSlot } from '../src/tab-drag';
 
 // Three 100 px tabs with a 4 px gap: 0–100, 104–204, 208–308.
 const slots: TabSlot[] = [0, 104, 208].map((left) => ({ left, width: 100 }));
@@ -42,5 +42,18 @@ describe('tabDragFrame', () => {
     const mixed: TabSlot[] = [{ left: 0, width: 60 }, { left: 64, width: 200 }, { left: 268, width: 80 }];
     // The 80 px tab, dragged left past the wide tab's centre (164), takes its place.
     expect(tabDragFrame(mixed, 2, -150, 4)).toEqual({ target: 1, offset: -150, shifts: [0, 84, 0] });
+  });
+});
+
+describe('nearBar', () => {
+  const bar = { left: 100, right: 700, top: 50, bottom: 90 };
+  it('counts the bar and a margin around it, on every side', () => {
+    expect(nearBar({ x: 400, y: 70 }, bar)).toBe(true);
+    expect(nearBar({ x: 100 - CANCEL_DISTANCE, y: 90 + CANCEL_DISTANCE }, bar)).toBe(true);
+    expect(nearBar({ x: 400, y: 91 + CANCEL_DISTANCE }, bar)).toBe(false);
+    expect(nearBar({ x: 400, y: 49 - CANCEL_DISTANCE }, bar)).toBe(false);
+    // Far to the side cancels too, even at the bar's height.
+    expect(nearBar({ x: 701 + CANCEL_DISTANCE, y: 70 }, bar)).toBe(false);
+    expect(nearBar({ x: 99 - CANCEL_DISTANCE, y: 70 }, bar)).toBe(false);
   });
 });

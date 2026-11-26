@@ -39,8 +39,14 @@ export function tabDragFrame(slots: readonly TabSlot[], index: number, dx: numbe
   return { target, offset, shifts };
 }
 
-/** Pointer movement beyond which (above or below the bar) a drop cancels. */
-const CANCEL_DISTANCE = 30;
+/** Pointer distance beyond the bar (on any side) at which letting go cancels. */
+export const CANCEL_DISTANCE = 30;
+
+/** Whether a drop at `point` still lands in the bar, rather than far from it. */
+export function nearBar(point: { x: number; y: number }, bar: { left: number; right: number; top: number; bottom: number }): boolean {
+  return point.x >= bar.left - CANCEL_DISTANCE && point.x <= bar.right + CANCEL_DISTANCE
+    && point.y >= bar.top - CANCEL_DISTANCE && point.y <= bar.bottom + CANCEL_DISTANCE;
+}
 
 export interface TabDragOptions {
   /** The scrolling tab bar. */
@@ -90,7 +96,10 @@ export function enableTabDrag(item: HTMLElement, handle: HTMLElement, options: T
   const reset = () => {
     const others = items.filter((el) => el !== item);
     for (const el of others) el.style.transform = '';
-    setTimeout(() => others.forEach((el) => el.classList.remove('tab-item--shifting')), 300);
+    // Leave a new drag's own animation alone if one started meanwhile.
+    setTimeout(() => {
+      if (!bar.querySelector('.tab-item--dragging')) others.forEach((el) => el.classList.remove('tab-item--shifting'));
+    }, 300);
     frame = null;
   };
 
@@ -99,6 +108,12 @@ export function enableTabDrag(item: HTMLElement, handle: HTMLElement, options: T
     onStart(point) {
       items = options.items();
       index = items.indexOf(item);
+      // A previous drag's tabs may still be sliding home: measure where they
+      // are laid out, not where the animation has got to.
+      for (const el of items) {
+        el.classList.remove('tab-item--shifting', 'tab-item--settling');
+        el.style.transform = '';
+      }
       const host = bar.getBoundingClientRect();
       slots = items.map((el) => {
         const r = el.getBoundingClientRect();
@@ -114,7 +129,7 @@ export function enableTabDrag(item: HTMLElement, handle: HTMLElement, options: T
     onMove(point) {
       if (index < 0) return;
       const host = bar.getBoundingClientRect();
-      const inside = point.y >= host.top - CANCEL_DISTANCE && point.y <= host.bottom + CANCEL_DISTANCE;
+      const inside = nearBar(point, host);
       frame = tabDragFrame(slots, index, point.x - originX + bar.scrollLeft - scroll, gap, inside);
       item.style.transform = `translateX(${frame.offset}px)`;
       item.classList.toggle('tab-item--outside', !inside);

@@ -186,6 +186,26 @@ describe('dragging timetable tabs', () => {
     expect(items()[0]!.classList.contains('tab-item--outside')).toBe(false);
   });
 
+  it('puts the tab back when released far to the side of the tab bar', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 900);
+    expect(items()[0]!.classList.contains('tab-item--outside')).toBe(true);
+    pointer(tabs(root)[0]!, 'pointerup', 900);
+    expect(loadState().schedules.map((s) => s.id)).toEqual(ids);
+  });
+
+  it('measures tabs where they are laid out even while a previous drag still animates them', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    // The second tab is still sliding home from a previous drag.
+    items()[1]!.classList.add('tab-item--shifting');
+    items()[1]!.style.transform = 'translateX(-90px)';
+    pointer(tabs(root)[0]!, 'pointerdown', 50, 10);
+    pointer(tabs(root)[0]!, 'pointermove', 50, 18);
+    pointer(tabs(root)[0]!, 'pointerup', 50, 18);
+    expect(loadState().schedules.map((s) => s.id)).toEqual(ids);
+  });
+
   it('still switches tabs on a click without movement', () => {
     pointer(tabs(root)[0]!, 'pointerdown', 50);
     pointer(tabs(root)[0]!, 'pointerup', 50);
