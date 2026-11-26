@@ -3,7 +3,7 @@ import { h } from './dom';
 import { enablePointerDrag, type DragPoint } from './drag';
 import { startInlineEdit } from './inline-edit';
 import { formatHour, layoutDay, type Lesson, type Schedule } from './model';
-import type { ReplacementOption } from './replacements';
+import { sourceNames, type ReplacementOption } from './replacements';
 
 export interface GridHandlers {
   onSlotClick(day: number, hour: number): void;
@@ -182,7 +182,7 @@ function optionLabel(option: ReplacementOption): string {
     `${DAYS[option.day]} ${formatHour(option.start)}–${formatHour(option.start + option.duration)}`,
     option.room && `učebna ${option.room}`,
     option.lecturer && `vyučující ${option.lecturer}`,
-    `rozvrhy ${option.sources.map((s) => s.id).join(', ')}`,
+    `rozvrhy ${sourceNames(option)}`,
     option.clashes.length ? `koliduje s ${option.clashes.map((c) => c.subject || 'hodinou').join(', ')}` : 'máš volno',
   ];
   return parts.filter(Boolean).join(', ');
@@ -191,7 +191,6 @@ function optionLabel(option: ReplacementOption): string {
 function renderOption(option: ReplacementOption, lane: number, lanes: number, band: Band, overlay: GridOverlay, order: number): HTMLElement {
   const color = paletteColor(option.color);
   const busy = option.clashes.length > 0;
-  const [first, ...rest] = option.sources;
   const el = h(
     'button',
     {
@@ -211,7 +210,8 @@ function renderOption(option: ReplacementOption, lane: number, lanes: number, ba
       ].join(';'),
     },
     h('span', { class: 'alt-title' }, option.subject),
-    h('span', { class: 'alt-meta' }, h('span', {}, `${first?.id ?? ''}${rest.length ? ` +${rest.length}` : ''}`), h('span', {}, option.room)),
+    // Teacher and room, laid out like the lessons of the official timetable.
+    h('span', { class: 'alt-meta' }, h('span', { class: 'alt-lecturer' }, option.lecturer), h('span', { class: 'alt-room' }, option.room)),
   );
   el.addEventListener('click', () => overlay.onSelect(option.key));
   return el;
@@ -295,12 +295,13 @@ export function renderGrid(schedule: Schedule, handlers: GridHandlers, overlay?:
     }
     if (overlay && altLanes) {
       track.append(h('div', { class: 'alt-strip', 'aria-hidden': 'true', style: `top:${ownBand.height * 100}%` }));
-      // Free options also light up their hours across the whole row.
-      for (const o of dayOptions.filter((o) => !o.clashes.length)) {
+      // The selected option lights up its hours across the whole row.
+      const selected = dayOptions.find((o) => o.key === overlay.selectedKey);
+      if (selected) {
         track.append(h('div', {
-          class: `alt-window${o.key === overlay.selectedKey ? ' alt-window--selected' : ''}`,
+          class: 'alt-window',
           'aria-hidden': 'true',
-          style: `left:${pct(o.start - FIRST_HOUR)};width:${pct(o.duration)}`,
+          style: `left:${pct(selected.start - FIRST_HOUR)};width:${pct(selected.duration)}`,
         }));
       }
     }

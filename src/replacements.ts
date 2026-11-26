@@ -9,6 +9,8 @@ import type { Lesson, LessonDraft } from './model';
 export interface CatalogTimetable {
   /** Official ID, e.g. "Bc1JCF2". */
   id: string;
+  /** Program abbreviation and kruh, without the year, e.g. "JCF2". */
+  short: string;
   /** Full name, e.g. "1. ročník Bc. – Jaderná a částicová fyzika, 2. kruh". */
   label: string;
   lessons: readonly LessonDraft[];
@@ -16,6 +18,7 @@ export interface CatalogTimetable {
 
 export interface ReplacementSource {
   id: string;
+  short: string;
   label: string;
 }
 
@@ -83,13 +86,13 @@ export function findReplacements(own: readonly Lesson[], skipped: Lesson, catalo
         };
         merged.set(id, option);
       }
-      if (!option.sources.some((s) => s.id === timetable.id)) option.sources.push({ id: timetable.id, label: timetable.label });
+      if (!option.sources.some((s) => s.id === timetable.id)) option.sources.push({ id: timetable.id, short: timetable.short, label: timetable.label });
     }
   }
   return [...merged.values()].sort((a, b) => a.day - b.day || a.start - b.start || a.duration - b.duration || a.key.localeCompare(b.key));
 }
 
-/** Free options first, then clashing ones; each group by day and time. */
-export function rankReplacements(options: readonly ReplacementOption[]): ReplacementOption[] {
-  return [...options].sort((a, b) => Number(a.clashes.length > 0) - Number(b.clashes.length > 0));
+/** "JCF1, FI_IPL": the timetables an option comes from, by abbreviation (years merged). */
+export function sourceNames(option: ReplacementOption): string {
+  return [...new Set(option.sources.map((s) => s.short))].join(', ');
 }

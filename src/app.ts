@@ -22,7 +22,7 @@ export class App {
   private readonly toolbar = h('div', { class: 'toolbar' });
   private readonly status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
   /** Open replacement finder: which timetable it belongs to, what it found, and the highlighted option. */
-  private finder: { scheduleId: string; search: FinderSearch; selectedKey: string | null; fresh: boolean } | null = null;
+  private finder: { scheduleId: string; search: FinderSearch; selectedKey: string | null; clashesOpen: boolean; fresh: boolean } | null = null;
   private readonly boardResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.fitBoard());
 
   constructor(root: HTMLElement) {
@@ -406,7 +406,7 @@ export class App {
       if (!search || this.active.id !== schedule.id) return;
       const skipped = schedule.lessons.find((l) => l.id === search.skippedId);
       if (!skipped) return;
-      this.finder = { scheduleId: schedule.id, search, selectedKey: null, fresh: true };
+      this.finder = { scheduleId: schedule.id, search, selectedKey: null, clashesOpen: false, fresh: true };
       const options = findReplacements(schedule.lessons, skipped, search.timetables);
       const free = options.filter((o) => !o.clashes.length).length;
       this.status.textContent = `${skipped.subject}: ${free} z ${options.length} termínů v ostatních rozvrzích máš volno.`;
@@ -456,7 +456,9 @@ export class App {
       options,
       failed: finder.search.failed,
       selectedKey: finder.selectedKey,
+      clashesOpen: finder.clashesOpen,
       onSelect: (key) => this.selectOption(key, 'list'),
+      onToggleClashes: (open) => { finder.clashesOpen = open; },
       onChange: () => void this.openFinder(),
       onClose: () => this.closeFinder(),
     });
@@ -476,7 +478,7 @@ export class App {
 
   private render(): void {
     const scrollLeft = this.boardHost.querySelector('.board-scroll')?.scrollLeft ?? 0;
-    const listScroll = this.boardHost.querySelector('.finder-list')?.scrollTop ?? 0;
+    const listScroll = [...this.boardHost.querySelectorAll('.finder-list')].map((el) => el.scrollTop);
     const finder = this.finderView();
     this.renderTabs();
     this.renderToolbar();
@@ -498,8 +500,7 @@ export class App {
     this.fitBoard();
     const scroller = this.boardHost.querySelector('.board-scroll');
     if (scroller) scroller.scrollLeft = scrollLeft;
-    const list = this.boardHost.querySelector('.finder-list');
-    if (list) list.scrollTop = listScroll;
+    this.boardHost.querySelectorAll('.finder-list').forEach((el, i) => (el.scrollTop = listScroll[i] ?? 0));
   }
 
   private moveLesson(lesson: Lesson, day: number, start: number): void {

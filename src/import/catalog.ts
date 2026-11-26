@@ -49,6 +49,7 @@ async function readJson(url: string, cache: Cache | null, signal?: AbortSignal):
 interface Entry {
   url: string;
   id: string;
+  short: string;
   label: string;
 }
 
@@ -57,6 +58,7 @@ function entries(manifest: FjfiManifest): Entry[] {
   return manifest.years.flatMap((year) => year.programs.flatMap((program) => program.kruhs.map((kruh) => ({
     url: new URL(kruh.file, base).href,
     id: kruh.id,
+    short: `${program.code}${program.kruhs.length > 1 && kruh.kruh !== null ? kruh.kruh : ''}`,
     label: timetableLabel(year, program, kruh),
   }))));
 }
@@ -83,7 +85,7 @@ export async function loadCatalog(onProgress?: (done: number, total: number) => 
         let timetable = memory.get(entry.url);
         if (!timetable) {
           const data = parseOfficialTimetable(await readJson(entry.url, cache, signal), entry.id);
-          timetable = { id: entry.id, label: entry.label, lessons: data.lessons };
+          timetable = { id: entry.id, short: entry.short, label: entry.label, lessons: data.lessons };
           memory.set(entry.url, timetable);
         }
         timetables[index] = timetable;

@@ -8,7 +8,7 @@ import { DAYS, paletteColor } from './config';
 import { closeOnBackdropClick } from './dialog';
 import { h } from './dom';
 import { formatHour, type Lesson } from './model';
-import { rankReplacements, type CatalogTimetable, type ReplacementOption } from './replacements';
+import { sourceNames, type CatalogTimetable, type ReplacementOption } from './replacements';
 import './finder.css';
 
 export interface FinderSearch {
@@ -22,12 +22,6 @@ const SHORT_DAYS = ['Po', 'Út', 'St', 'Čt', 'Pá'] as const;
 
 export function slotLabel(slot: { day: number; start: number; duration: number }, short = false): string {
   return `${(short ? SHORT_DAYS : DAYS)[slot.day]} ${formatHour(slot.start)}–${formatHour(slot.start + slot.duration)}`;
-}
-
-/** "Bc1JCF2", or "Bc1JCF2 +3" when more timetables share the lesson. */
-export function sourcesShort(option: ReplacementOption): string {
-  const [first, ...rest] = option.sources;
-  return rest.length ? `${first!.id} +${rest.length}` : first?.id ?? '';
 }
 
 function countLabel(n: number, one: string, few: string, many: string): string {
@@ -122,17 +116,19 @@ export interface FinderPanelProps {
   options: ReplacementOption[];
   failed: number;
   selectedKey: string | null;
+  /** Whether the list of clashing options is unfolded. */
+  clashesOpen: boolean;
   onSelect(key: string): void;
+  onToggleClashes(open: boolean): void;
   onChange(): void;
   onClose(): void;
 }
 
-/** Summary above the timetable: what is being replaced, how many options are free, and the list of all of them. */
+/** Summary above the timetable: what is being replaced, the free options, and (folded) the clashing ones. */
 export function renderFinderPanel(props: FinderPanelProps): HTMLElement {
   const { skipped, options, failed, selectedKey } = props;
-  const ranked = rankReplacements(options);
-  const free = ranked.filter((o) => !o.clashes.length).length;
-  const clashing = ranked.length - free;
+  const free = options.filter((o) => !o.clashes.length);
+  const clashing = options.filter((o) => o.clashes.length);
 
   const changeBtn = h('button', { type: 'button', class: 'btn' }, 'Jiný předmět');
   changeBtn.addEventListener('click', props.onChange);
@@ -150,17 +146,13 @@ export function renderFinderPanel(props: FinderPanelProps): HTMLElement {
       h('span', { class: 'finder-code', style: `--fill:${color.fill};--border:${color.border}` }, skipped.subject),
       h('span', { class: 'finder-when' }, slotLabel(skipped)),
     ),
-    h(
-      'div',
-      { class: 'finder-counts' },
-      h('span', { class: 'finder-count finder-count--free' }, countLabel(free, 'volný termín', 'volné termíny', 'volných termínů')),
-      clashing ? h('span', { class: 'finder-count finder-count--clash' }, `${clashing} v kolizi`) : null,
-    ),
     h('div', { class: 'finder-actions' }, changeBtn, closeBtn),
   );
 
-  const items = ranked.map((option) => {
+  // One fact per line, wrapping instead of overlapping or cutting names short.
+  const item = (option: ReplacementOption) => {
     const busy = option.clashes.length > 0;
+    const clashNames = [...new Set(option.clashes.map((c) => (c.id === skipped.id ? `${c.subject} (vynecháváš)` : c.subject || 'jinou hodinou')))];
     const button = h(
       'button',
       {
@@ -168,19 +160,35 @@ export function renderFinderPanel(props: FinderPanelProps): HTMLElement {
         class: `finder-item${busy ? ' finder-item--clash' : ''}`,
         'data-option-key': option.key,
         'aria-pressed': option.key === selectedKey ? 'true' : 'false',
+        title: option.sources.map((s) => s.label).join('\n'),
       },
       h('span', { class: 'finder-item-when' }, slotLabel(option, true)),
-      h('span', { class: 'finder-item-where' }, [option.room, option.lecturer].filter(Boolean).join(' · ') || '—'),
-      h('span', { class: 'finder-item-groups', title: option.sources.map((s) => s.label).join('\n') }, option.sources.map((s) => s.id).join(', ')),
-      h(
-        'span',
-        { class: 'finder-item-state' },
-        busy ? `koliduje s ${[...new Set(option.clashes.map((c) => (c.id === skipped.id ? `${c.subject} (vynecháváš)` : c.subject || 'hodinou')))].join(', ')}` : 'máš volno',
-      ),
+      h('span', { class: 'finder-item-line' }, [option.lecturer, option.room].filter(Boolean).join(' · ') || 'Vyučující a učebna neuvedeny'),
+      h('span', { class: 'finder-item-line finder-item-groups' }, sourceNames(option)),
+      busy ? h('span', { class: 'finder-item-line finder-item-clash' }, `Koliduje s ${clashNames.join(', ')}`) : null,
     );
     button.addEventListener('click', () => props.onSelect(option.key));
     return h('li', {}, button);
-  });
+  };
+
+  const freeSection = free.length
+    ? h('ol', { class: 'finder-list', 'aria-label': 'Volné termíny' }, ...free.map(item))
+    : h('p', { class: 'finder-empty' }, options.length
+      ? 'Žádný termín nevychází do tvého volného času. Termíny v kolizi najdeš níže.'
+      : `V ostatních rozvrzích se předmět ${skipped.subject} nevyskytuje. Zkontroluj, že kód odpovídá oficiálnímu rozvrhu.`);
+
+  let clashSection: HTMLElement | null = null;
+  if (clashing.length) {
+    const details = h(
+      'details',
+      { class: 'finder-clashes' },
+      h('summary', {}, countLabel(clashing.length, 'termín v kolizi', 'termíny v kolizi', 'termínů v kolizi')),
+      h('ol', { class: 'finder-list' }, ...clashing.map(item)),
+    );
+    details.open = props.clashesOpen || clashing.some((o) => o.key === selectedKey);
+    details.addEventListener('toggle', () => props.onToggleClashes(details.open));
+    clashSection = details;
+  }
 
   const notes = [
     failed ? countLabel(failed, 'rozvrh se nepodařilo načíst', 'rozvrhy se nepodařilo načíst', 'rozvrhů se nepodařilo načíst') + '.' : '',
@@ -191,9 +199,9 @@ export function renderFinderPanel(props: FinderPanelProps): HTMLElement {
     'section',
     { class: 'finder-panel', 'aria-label': `Náhrada za ${skipped.subject}` },
     head,
-    ranked.length
-      ? h('ol', { class: 'finder-list' }, ...items)
-      : h('p', { class: 'finder-empty' }, `V ostatních rozvrzích se předmět ${skipped.subject} nevyskytuje. Zkontroluj, že kód odpovídá oficiálnímu rozvrhu.`),
+    free.length ? h('h3', { class: 'finder-subhead' }, countLabel(free.length, 'volný termín', 'volné termíny', 'volných termínů')) : null,
+    freeSection,
+    clashSection,
     h('p', { class: 'finder-note' }, notes.join(' ')),
   );
 }
