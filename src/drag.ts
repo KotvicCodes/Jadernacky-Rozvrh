@@ -1,7 +1,7 @@
 /** Whole-surface pointer dragging shared by lessons and schedule tabs. */
 
 /** Width of the zone at a scroll area's (or the window's) edge where dragging scrolls it. */
-export const AUTO_SCROLL_EDGE = 36;
+const AUTO_SCROLL_EDGE = 36;
 export interface DragPoint { x: number; y: number }
 
 export function enablePointerDrag(el: HTMLElement, options: {
@@ -39,11 +39,11 @@ export function enablePointerDrag(el: HTMLElement, options: {
     }
   };
   const onKey = (e: KeyboardEvent) => {
-    // A mere press (no drag yet) leaves Escape to the page.
-    if (e.key === 'Escape' && dragging) {
-      e.preventDefault();
-      stop(true);
-    }
+    if (e.key !== 'Escape') return;
+    // Cancelling a drag consumes the key; a mere press (no drag yet) is
+    // released and the key is left to the page.
+    if (dragging) e.preventDefault();
+    stop(true);
   };
   const onExtraPointer = (e: PointerEvent) => {
     if (!e.isPrimary) stop(true);

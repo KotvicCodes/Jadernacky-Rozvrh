@@ -1,6 +1,6 @@
 import { DAYS, FIRST_HOUR, HOUR_COUNT, LAST_HOUR, paletteColor } from './config';
 import { h } from './dom';
-import { AUTO_SCROLL_EDGE, enablePointerDrag, type DragPoint } from './drag';
+import { enablePointerDrag, type DragPoint } from './drag';
 import { startInlineEdit } from './inline-edit';
 import { formatHour, layoutDay, type Lesson, type Schedule } from './model';
 import { sourceNames, type ReplacementOption } from './replacements';
@@ -73,6 +73,8 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   let target: { day: number; start: number } | null = null;
   let preview: HTMLElement | null = null;
   let deleting = false;
+  /** Where the pointer was on the previous move, to tell its own movement from auto-scrolling. */
+  let last: DragPoint | null = null;
   // The timetable scrolls and clips what leaves it, so the lesson itself stays
   // put (faded) and a copy outside the timetable follows the pointer. Moving
   // the lesson inside the scroll box would clip it at the edges and widen the
@@ -93,6 +95,7 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
     setDeleting(false);
     float?.remove();
     float = null;
+    last = null;
     preview?.remove();
     preview = null;
     target = null;
@@ -132,14 +135,12 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
         return point.x >= Math.max(r.left, visible.left, labelRight) && point.x <= Math.min(r.right, visible.right)
           && point.y >= r.top && point.y < r.bottom;
       });
-      // At the window's top or bottom edge the page auto-scrolls under a still
-      // pointer, which can leave the timetable far from it without the user
-      // dragging away; while the page can still scroll that way, that zone only
-      // scrolls and never deletes.
-      const page = document.documentElement;
-      const pageScrolls = (point.y < AUTO_SCROLL_EDGE && window.scrollY > 0)
-        || (point.y > window.innerHeight - AUTO_SCROLL_EDGE && window.scrollY + window.innerHeight < page.scrollHeight - 1);
-      setDeleting(!track && !pageScrolls && isOutside(point, scrollHost.getBoundingClientRect()));
+      // Only the pointer's own movement can arm a delete. Edge auto-scrolling
+      // moves the timetable away under a still pointer, which must not count.
+      const moved = !last || last.x !== point.x || last.y !== point.y;
+      last = point;
+      const outside = !track && isOutside(point, scrollHost.getBoundingClientRect());
+      setDeleting(outside && (deleting || moved));
       if (!track) {
         preview?.remove();
         preview = null;

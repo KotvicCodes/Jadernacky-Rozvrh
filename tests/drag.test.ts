@@ -76,6 +76,10 @@ describe('pointer dragging', () => {
     document.body.dispatchEvent(key);
     expect(key.defaultPrevented).toBe(false);
     expect(onCancel).not.toHaveBeenCalled();
+    // The press is released, so moving on does not start a drag.
+    expect(button.releasePointerCapture).toHaveBeenCalled();
+    pointer(button, 'pointermove', { clientX: 120 });
+    expect(onStart).not.toHaveBeenCalled();
   });
 
   it('ignores secondary pointers and cancels on Escape', () => {

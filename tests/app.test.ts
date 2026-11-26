@@ -473,6 +473,10 @@ describe('Stáhnout menu', () => {
     button.click();
     expect(menu.hidden).toBe(true);
     expect(document.activeElement).toBe(button);
+    // While closed, pressing the button behaves normally.
+    const pressClosed = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    button.dispatchEvent(pressClosed);
+    expect(pressClosed.defaultPrevented).toBe(false);
   });
 
   it('offers PDF and PNG in one menu that works like Importovat', () => {

@@ -52,7 +52,9 @@ export function renderMenu(label: string, items: readonly MenuItem[]): Menu {
   // Safari (and Firefox on macOS) don't focus a button on click, so pressing an
   // item, or the button to close the menu, would blur the focused item and
   // close the menu before the click lands (which then reopened it).
-  wrap.addEventListener('mousedown', (e) => e.preventDefault());
+  wrap.addEventListener('mousedown', (e) => {
+    if (!menu.hidden) e.preventDefault();
+  });
   wrap.addEventListener('focusout', (e) => {
     if (!wrap.contains(e.relatedTarget as Node | null)) close();
   });

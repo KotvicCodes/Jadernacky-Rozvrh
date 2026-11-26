@@ -25,9 +25,9 @@ export class App {
   /** Holds "Vrátit" after a lesson is deleted; kept apart so progress messages don't clear it. */
   private readonly undoHost = h('span', { class: 'status-undo' });
   private pendingUndo: { cancel(): void } | null = null;
-  /** Open replacement finder: which timetable it belongs to, what it found, and the highlighted option. */
   /** Bumped whenever the user opens or ends a search, so a stale undo cannot revive an old one. */
   private finderVersion = 0;
+  /** Open replacement finder: which timetable it belongs to, what it found, and the highlighted option. */
   private finder: { scheduleId: string; search: FinderSearch; selectedKey: string | null; clashesOpen: boolean; fresh: boolean } | null = null;
   private readonly boardResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.fitBoard());
 

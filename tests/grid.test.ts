@@ -180,30 +180,35 @@ describe('deleting a lesson by dragging it off the timetable', () => {
     expect(handlers.onLessonMove).not.toHaveBeenCalled();
   });
 
-  it('never deletes at the window\'s bottom edge while the page can still scroll down', () => {
-    const page = document.documentElement;
-    Object.defineProperty(page, 'scrollHeight', { configurable: true, value: 2000 });
-    try {
-      const { el, handlers, pointer } = setup();
-      pointer('pointerdown', 350, 230);
-      // Far below the timetable, but inside the bottom auto-scroll zone of the 768 px window.
-      pointer('pointermove', 500, window.innerHeight - 10);
-      expect(el.classList.contains('lesson--deleting')).toBe(false);
-      pointer('pointerup', 500, window.innerHeight - 10);
-      expect(handlers.onLessonDelete).not.toHaveBeenCalled();
-    } finally {
-      delete (page as unknown as Record<string, unknown>).scrollHeight;
-    }
+  it('never arms a delete when auto-scrolling moves the timetable away from a still pointer', () => {
+    const { grid, el, handlers, pointer } = setup();
+    pointer('pointerdown', 350, 230);
+    pointer('pointermove', 500, 490); // inside the timetable, near its bottom
+    // The page auto-scrolls to its end: the timetable moves 200 px up under the pointer.
+    grid.getBoundingClientRect = () => ({ ...box, top: box.top - 200, bottom: box.bottom - 200, width: 800, height: 400 }) as DOMRect;
+    grid.querySelectorAll<HTMLElement>('.track').forEach((track, day) => {
+      track.getBoundingClientRect = () => ({ left: 220, right: 900, top: day * 64 - 60, bottom: day * 64 + 4, width: 680, height: 64 }) as DOMRect;
+    });
+    pointer('pointermove', 500, 490); // same spot: an auto-scroll tick, not a move
+    expect(el.classList.contains('lesson--deleting')).toBe(false);
+    pointer('pointerup', 500, 490);
+    expect(handlers.onLessonDelete).not.toHaveBeenCalled();
   });
 
-  it('does delete at the window\'s edge once the page cannot scroll that way', () => {
-    const { el, handlers, pointer } = setup();
-    // jsdom's page is not scrollable, like a page already scrolled to its end.
+  it('arms a delete as soon as the pointer itself moves while outside', () => {
+    const { grid, el, pointer } = setup();
     pointer('pointerdown', 350, 230);
-    pointer('pointermove', 500, window.innerHeight - 10);
+    pointer('pointermove', 500, 490);
+    grid.getBoundingClientRect = () => ({ ...box, top: box.top - 200, bottom: box.bottom - 200, width: 800, height: 400 }) as DOMRect;
+    grid.querySelectorAll<HTMLElement>('.track').forEach((track) => (track.getBoundingClientRect = () => ({ left: 220, right: 900, top: -500, bottom: -436, width: 680, height: 64 }) as DOMRect));
+    pointer('pointermove', 500, 490);
+    expect(el.classList.contains('lesson--deleting')).toBe(false);
+    pointer('pointermove', 500, 495);
     expect(el.classList.contains('lesson--deleting')).toBe(true);
-    pointer('pointerup', 500, window.innerHeight - 10);
-    expect(handlers.onLessonDelete).toHaveBeenCalled();
+    // Once armed it stays armed while the pointer rests outside.
+    pointer('pointermove', 500, 495);
+    expect(el.classList.contains('lesson--deleting')).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
   });
 
   it('deletes with Delete or Backspace on a focused lesson', () => {
