@@ -44,11 +44,13 @@ describe('findReplacements', () => {
     expect(sourceNames(options[2]!)).toBe('JCF2, JCF');
   });
 
-  it('never offers language lessons, whatever their suffix', () => {
-    for (const subject of ['JAZ', 'JAZ.2', 'jaz3', 'JAZ.3cv', 'Jaz 2']) {
-      const skipped = lesson('j', 0, 8, 2, subject);
+  it('offers only exercises, whose codes end in cv', () => {
+    for (const subject of ['MAN1', 'LAL1', 'JAZ.2', 'MAN1cv.rez', 'FY1cvx']) {
+      const skipped = lesson('l', 0, 8, 2, subject);
       expect(findReplacements([skipped], skipped, [{ id: 'a', short: 'a', label: 'a', lessons: [draft(1, 8, 2, subject)] }])).toEqual([]);
     }
+    const skipped = lesson('c', 0, 8, 2, 'LAL1 CV');
+    expect(findReplacements([skipped], skipped, [{ id: 'a', short: 'a', label: 'a', lessons: [draft(1, 8, 2, 'lal1cv')] }])).toHaveLength(1);
   });
 
   it('finds nothing for an untitled lesson', () => {
@@ -134,8 +136,8 @@ describe('Nahradit hodinu', () => {
 
     [...root.querySelectorAll<HTMLButtonElement>('.toolbar button')].find((b) => b.textContent === 'Nahradit hodinu')!.click();
     await vi.waitFor(() => expect(document.querySelector('dialog .finder-choices')).not.toBeNull());
-    // Only lessons with a subject are offered, by day and time.
-    expect([...document.querySelectorAll('.finder-choice-code')].map((el) => el.textContent)).toEqual(['MAN1cv', 'LAL1']);
+    // Only exercises (…cv) are offered: the LAL1 lecture is not.
+    expect([...document.querySelectorAll('.finder-choice-code')].map((el) => el.textContent)).toEqual(['MAN1cv']);
     document.querySelector<HTMLFormElement>('dialog form')!.requestSubmit();
     await vi.waitFor(() => expect(root.querySelector('.finder-panel')).not.toBeNull());
     expect(document.querySelector('dialog')).toBeNull();
@@ -185,7 +187,7 @@ describe('Nahradit hodinu while editing the timetable', () => {
     HTMLDialogElement.prototype.close = function () { this.dispatchEvent(new Event('close')); };
     stubCatalog(files);
     localStorage.clear();
-    const own = [lesson('cv', 0, 10, 2, 'MAN1cv', 'T-201'), lesson('lal', 1, 8, 2, 'LAL1')];
+    const own = [lesson('cv', 0, 10, 2, 'MAN1cv', 'T-201'), lesson('lal', 1, 8, 2, 'LAL1cv')];
     saveState({ schedules: [{ id: 's1', name: '', specId: 'JCF1', lessons: own, updatedAt: 0 }], activeId: 's1' });
     document.body.replaceChildren();
     const root = document.createElement('div');
@@ -253,11 +255,12 @@ describe('Nahradit hodinu dialog', () => {
     document.body.replaceChildren();
     const lessons = [
       lesson('thu', 3, 10, 2, 'ANA3cv', 'T-211'),
-      lesson('lal', 1, 8, 2, 'LAL1'),
+      lesson('lal', 1, 8, 2, 'LAL1cv'),
+      lesson('lecture', 1, 10, 2, 'LAL1'),
       lesson('mon', 0, 10, 2, 'ana3 cv', 'T-210', 'Fučík'),
       lesson('none', 2, 8, 1, ''),
       lesson('jaz', 1, 16, 2, 'JAZ.2'),
-      lesson('jaz3', 4, 8, 2, 'jaz3 cv'),
+      lesson('jaz3', 4, 8, 2, 'JAZ.3'),
     ];
     expect(groupBySubject(lessons).map((g) => g.map((l) => l.id))).toEqual([['mon', 'thu'], ['lal']]);
 
@@ -265,9 +268,9 @@ describe('Nahradit hodinu dialog', () => {
     const subjects = () => [...document.querySelectorAll<HTMLInputElement>('input[name="subject"]')];
     const occurrences = document.querySelector<HTMLFieldSetElement>('.finder-occurrences')!;
     const submit = document.querySelector<HTMLButtonElement>('dialog button[type="submit"]')!;
-    expect([...document.querySelectorAll('.finder-choice-code')].map((el) => el.textContent)).toEqual(['ana3 cv', 'LAL1']);
+    expect([...document.querySelectorAll('.finder-choice-code')].map((el) => el.textContent)).toEqual(['ana3 cv', 'LAL1cv']);
     expect(document.querySelector('.finder-choice .finder-choice-when')!.textContent).toBe('2× týdně');
-    expect(document.querySelector('.finder-languages')!.textContent).toBe('Jazyky (JAZ) tu nahradit nejde.');
+    expect(document.querySelector('.finder-others')!.textContent).toBe('Nahradit jde jen cvičení (kódy končící na cv).');
 
     // A subject taught twice: the student has to say which lesson they will miss.
     expect(occurrences.hidden).toBe(false);
@@ -286,6 +289,18 @@ describe('Nahradit hodinu dialog', () => {
     expect(occurrences.hidden).toBe(true);
     expect(submit.disabled).toBe(false);
 
+    document.querySelector<HTMLButtonElement>('dialog .btn:not(.btn-primary)')!.click();
+    expect(await picked).toBeNull();
+  });
+
+  it('says so when the timetable has lectures but no exercises', async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.dispatchEvent(new Event('close')); };
+    document.body.replaceChildren();
+    const picked = openFinderDialog([lesson('lal', 1, 8, 2, 'LAL1'), lesson('man', 0, 10, 2, 'MAN1')]);
+    expect(document.querySelector('.finder-choices')).toBeNull();
+    expect(document.querySelector('.finder-form .hint')!.textContent).toBe('V tomhle rozvrhu nejsou žádná cvičení, která by šlo nahradit.');
+    expect(document.querySelector<HTMLButtonElement>('dialog button[type="submit"]')!.disabled).toBe(true);
     document.querySelector<HTMLButtonElement>('dialog .btn:not(.btn-primary)')!.click();
     expect(await picked).toBeNull();
   });
