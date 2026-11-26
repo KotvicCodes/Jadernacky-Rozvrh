@@ -3,9 +3,11 @@ import { openLessonDialog } from './dialog';
 import { h } from './dom';
 import { enablePointerDrag } from './drag';
 import { downloadPdf, downloadPng } from './export';
-import { renderGrid } from './grid';
+import { openFinderDialog, renderFinderPanel, type FinderSearch } from './finder';
+import { renderGrid, type GridOverlay } from './grid';
 import { startInlineEdit } from './inline-edit';
 import { cleanText, createSchedule, normalizeLesson, scheduleLabel, type Lesson, type LessonDraft, type Schedule } from './model';
+import { findReplacements } from './replacements';
 import { loadState, saveState, type AppState } from './storage';
 
 /** Author's GitHub profile (header credit) and this project's repository (bug link). */
@@ -19,6 +21,8 @@ export class App {
   private readonly tabs = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Rozvrhy' });
   private readonly toolbar = h('div', { class: 'toolbar' });
   private readonly status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+  /** Open replacement finder: which timetable it belongs to, what it found, and the highlighted option. */
+  private finder: { scheduleId: string; search: FinderSearch; selectedKey: string | null; clashesOpen: boolean; fresh: boolean } | null = null;
   private readonly boardResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.fitBoard());
 
   constructor(root: HTMLElement) {
@@ -48,6 +52,11 @@ export class App {
     this.render();
     this.boardResizeObserver?.observe(this.boardHost);
     this.listenForFiles();
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !this.finder || e.defaultPrevented) return;
+      if (document.querySelector('dialog[open]') || (e.target instanceof Element && e.target.closest('input, textarea, select, .menu-wrap'))) return;
+      this.closeFinder();
+    });
   }
 
   /** Paste (Ctrl+V) and drag-and-drop of PDF/image files start an import. */
@@ -299,6 +308,8 @@ export class App {
       fileInput.value = '';
     });
     const importMenu = this.renderImportMenu(() => fileInput.click());
+    const findBtn = h('button', { type: 'button', class: 'btn btn-find', 'aria-pressed': this.finder ? 'true' : 'false' }, 'Nahradit hodinu');
+    findBtn.addEventListener('click', () => void this.openFinder());
 
     // Two rows: the pickers, then all buttons in one row below them (it only
     // wraps when the screen is too narrow).
@@ -309,7 +320,7 @@ export class App {
         h('label', { class: 'toolbar-field' }, h('span', {}, 'Obor'), programSelect),
         h('label', { class: 'toolbar-field toolbar-field--narrow' }, h('span', {}, 'Kruh'), groupSelect),
       ),
-      h('div', { class: 'toolbar-row toolbar-actions' }, pngBtn, pdfBtn, importMenu, fileInput, deleteBtn),
+      h('div', { class: 'toolbar-row toolbar-actions' }, pngBtn, pdfBtn, importMenu, fileInput, findBtn, deleteBtn),
     );
   }
 
@@ -382,6 +393,77 @@ export class App {
     }
   }
 
+  private searching = false;
+
+  /** "Nahradit hodinu": pick the lesson to skip, search every official timetable, then show the overlay. */
+  private async openFinder(): Promise<void> {
+    if (this.searching) return;
+    this.searching = true;
+    const schedule = this.active;
+    try {
+      const preselect = this.finder?.scheduleId === schedule.id ? this.finder.search.skippedId : undefined;
+      const search = await openFinderDialog(schedule.lessons, preselect);
+      if (!search || this.active.id !== schedule.id) return;
+      const skipped = schedule.lessons.find((l) => l.id === search.skippedId);
+      if (!skipped) return;
+      this.finder = { scheduleId: schedule.id, search, selectedKey: null, clashesOpen: false, fresh: true };
+      const options = findReplacements(schedule.lessons, skipped, search.timetables);
+      const free = options.filter((o) => !o.clashes.length).length;
+      this.status.textContent = `${skipped.subject}: ${free} z ${options.length} termínů v ostatních rozvrzích máš volno.`;
+      this.render();
+      this.boardHost.querySelector<HTMLElement>('.finder-panel')?.scrollIntoView?.({ block: 'nearest' });
+    } finally {
+      this.searching = false;
+    }
+  }
+
+  private closeFinder(): void {
+    if (!this.finder) return;
+    this.finder = null;
+    this.status.textContent = 'Hledání náhrady ukončeno.';
+    this.render();
+  }
+
+  private selectOption(key: string, from: 'grid' | 'list'): void {
+    if (!this.finder) return;
+    this.finder.selectedKey = this.finder.selectedKey === key ? null : key;
+    this.render();
+    const find = (scope: string) => [...this.boardHost.querySelectorAll<HTMLElement>(`${scope} [data-option-key]`)].find((el) => el.dataset.optionKey === key);
+    find(from === 'grid' ? '.board' : '.finder-list')?.focus({ preventScroll: true });
+    if (this.finder.selectedKey) find(from === 'grid' ? '.finder-list' : '.board')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /** The finder overlay for the active timetable, or null (and the finder closed) when it no longer applies. */
+  private finderView(): { overlay: GridOverlay; panel: HTMLElement } | null {
+    const finder = this.finder;
+    const schedule = this.active;
+    const skipped = finder && finder.scheduleId === schedule.id ? schedule.lessons.find((l) => l.id === finder.search.skippedId) : undefined;
+    if (!finder || !skipped || !skipped.subject.trim()) {
+      this.finder = null;
+      return null;
+    }
+    // Recomputed on every render, so moving or editing lessons updates the clashes.
+    const options = findReplacements(schedule.lessons, skipped, finder.search.timetables);
+    if (finder.selectedKey && !options.some((o) => o.key === finder.selectedKey)) finder.selectedKey = null;
+    const overlay: GridOverlay = {
+      skippedId: skipped.id,
+      options,
+      selectedKey: finder.selectedKey,
+      onSelect: (key) => this.selectOption(key, 'grid'),
+    };
+    const panel = renderFinderPanel({
+      skipped,
+      options,
+      failed: finder.search.failed,
+      selectedKey: finder.selectedKey,
+      clashesOpen: finder.clashesOpen,
+      onSelect: (key) => this.selectOption(key, 'list'),
+      onToggleClashes: (open) => { finder.clashesOpen = open; },
+      onClose: () => this.closeFinder(),
+    });
+    return { overlay, panel };
+  }
+
   /** Fit the complete desktop timetable on a phone, keeping its proportions.
    * Native pinch zoom remains available for reading/editing small lessons. */
   private fitBoard(): void {
@@ -395,10 +477,11 @@ export class App {
 
   private render(): void {
     const scrollLeft = this.boardHost.querySelector('.board-scroll')?.scrollLeft ?? 0;
+    const listScroll = [...this.boardHost.querySelectorAll('.finder-list')].map((el) => el.scrollTop);
+    const finder = this.finderView();
     this.renderTabs();
     this.renderToolbar();
-    this.boardHost.replaceChildren(
-      renderGrid(this.active, {
+    const grid = renderGrid(this.active, {
         onSlotClick: (day, hour) => void this.addLesson(day, hour),
         onLessonClick: (lesson) => void this.editLesson(lesson),
         onLessonMove: (lesson, day, start) => this.moveLesson(lesson, day, start),
@@ -406,11 +489,17 @@ export class App {
           this.active.specId = canonicalSpecId(cleanText(value));
           this.commit(this.active.specId ? `ID rozvrhu: ${this.active.specId}` : 'ID rozvrhu smazáno.');
         },
-      }),
-    );
+      }, finder?.overlay);
+    if (this.finder?.fresh) {
+      grid.querySelector('.board')?.classList.add('board--finder-enter');
+      this.finder.fresh = false;
+    }
+    this.boardHost.classList.toggle('board-host--finder', Boolean(finder));
+    this.boardHost.replaceChildren(...(finder ? [finder.panel] : []), grid);
     this.fitBoard();
     const scroller = this.boardHost.querySelector('.board-scroll');
     if (scroller) scroller.scrollLeft = scrollLeft;
+    this.boardHost.querySelectorAll('.finder-list').forEach((el, i) => (el.scrollTop = listScroll[i] ?? 0));
   }
 
   private moveLesson(lesson: Lesson, day: number, start: number): void {
