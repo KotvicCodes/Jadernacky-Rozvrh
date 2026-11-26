@@ -213,6 +213,23 @@ describe('deleting a lesson by dragging it off the timetable', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
     });
 
+    it('stays disarmed in the window\'s edge zone while the page can still scroll, however fast the pointer moves', () => {
+      const page = document.documentElement;
+      Object.defineProperty(page, 'scrollHeight', { configurable: true, value: 3000 });
+      try {
+        const { el, handlers, pointer } = setup();
+        pointer('pointerdown', 350, 230);
+        // Far below the timetable and inside the bottom edge zone, moving quickly between frames.
+        pointer('pointermove', 500, window.innerHeight - 30);
+        pointer('pointermove', 500, window.innerHeight - 30 + 2 * REARM_DISTANCE);
+        expect(el.classList.contains('lesson--deleting')).toBe(false);
+        pointer('pointerup', 500, window.innerHeight - 30 + 2 * REARM_DISTANCE);
+        expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+      } finally {
+        delete (page as unknown as Record<string, unknown>).scrollHeight;
+      }
+    });
+
     it('treats any shift of the timetable alike, not only page scrolling', () => {
       const { grid, el, pointer } = setup();
       pointer('pointerdown', 350, 230);

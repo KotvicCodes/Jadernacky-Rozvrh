@@ -4,6 +4,27 @@
 const AUTO_SCROLL_EDGE = 36;
 export interface DragPoint { x: number; y: number }
 
+/** Auto-scroll speed (px per frame) for a pointer at `value` between `min` and `max`; 0 outside the edge zones. */
+function edgeSpeed(value: number, min: number, max: number): number {
+  const edge = Math.min(AUTO_SCROLL_EDGE, (max - min) / 4);
+  if (value < min || value > max) return 0;
+  if (value < min + edge) return -10 * (1 - (value - min) / edge);
+  if (value > max - edge) return 10 * (1 - (max - value) / edge);
+  return 0;
+}
+
+/**
+ * Whether a drag with `scrollPage` is scrolling the page with the pointer at
+ * `point`: it is in the window's top or bottom edge zone and the page can still
+ * scroll that way.
+ */
+export function pageAutoScrolls(point: DragPoint): boolean {
+  const dy = edgeSpeed(point.y, 0, window.innerHeight);
+  if (dy < 0) return window.scrollY > 0;
+  if (dy > 0) return window.scrollY + window.innerHeight < document.documentElement.scrollHeight - 1;
+  return false;
+}
+
 export function enablePointerDrag(el: HTMLElement, options: {
   scrollHost: HTMLElement;
   scrollPage?: boolean;
@@ -63,13 +84,6 @@ export function enablePointerDrag(el: HTMLElement, options: {
   };
   const onExtraPointer = (e: PointerEvent) => {
     if (!e.isPrimary) stop(true);
-  };
-  const edgeSpeed = (value: number, min: number, max: number) => {
-    const edge = Math.min(AUTO_SCROLL_EDGE, (max - min) / 4);
-    if (value < min || value > max) return 0;
-    if (value < min + edge) return -10 * (1 - (value - min) / edge);
-    if (value > max - edge) return 10 * (1 - (max - value) / edge);
-    return 0;
   };
   const tick = () => {
     if (!dragging || !point) return;

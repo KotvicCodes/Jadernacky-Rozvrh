@@ -1,6 +1,6 @@
 import { DAYS, FIRST_HOUR, HOUR_COUNT, LAST_HOUR, paletteColor } from './config';
 import { h } from './dom';
-import { enablePointerDrag, type DragPoint } from './drag';
+import { enablePointerDrag, pageAutoScrolls, type DragPoint } from './drag';
 import { startInlineEdit } from './inline-edit';
 import { formatHour, layoutDay, type Lesson, type Schedule } from './model';
 import { sourceNames, type ReplacementOption } from './replacements';
@@ -81,10 +81,11 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   let target: { day: number; start: number } | null = null;
   let preview: HTMLElement | null = null;
   let deleting = false;
-  // Only the pointer's own movement may take a lesson off the timetable. If the
-  // timetable itself moves on screen (edge auto-scroll, layout shift, mobile
-  // toolbar), nothing is armed until the pointer has moved REARM_DISTANCE by
-  // itself; a delete armed earlier is dropped too, so the safe outcome wins.
+  // Only the pointer's own movement may take a lesson off the timetable. While
+  // the drag scrolls the page, nothing is armed. When the timetable has moved
+  // on screen (that scrolling, a layout shift, a mobile toolbar), nothing is
+  // armed until the pointer has then moved REARM_DISTANCE by itself; a delete
+  // armed earlier is dropped too, so the safe outcome wins.
   let boardAt: { left: number; top: number } | null = null;
   let shiftedAt: DragPoint | null = null;
   // The timetable scrolls and clips what leaves it, so the lesson itself stays
@@ -150,7 +151,9 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
       const board = scrollHost.getBoundingClientRect();
       const boardMoved = boardAt !== null && (board.left !== boardAt.left || board.top !== boardAt.top);
       boardAt = { left: board.left, top: board.top };
-      if (boardMoved) shiftedAt = point;
+      // Asked directly rather than inferred from the last frame, so a quick move
+      // between two auto-scroll frames cannot re-arm while the page scrolls.
+      if (boardMoved || pageAutoScrolls(point)) shiftedAt = point;
       else if (shiftedAt && Math.hypot(point.x - shiftedAt.x, point.y - shiftedAt.y) >= REARM_DISTANCE) shiftedAt = null;
       setDeleting(!track && !shiftedAt && isOutside(point, board));
       if (!track) {
