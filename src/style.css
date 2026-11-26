@@ -101,9 +101,24 @@ body { margin: 0; background: var(--bg); }
   .tab-close { right: 0.15rem; width: 2rem; height: 2rem; font-size: 1.15rem; }
 }
 .tab[role='tab'] { touch-action: pinch-zoom; -webkit-touch-callout: none; }
-.tab--dragging { opacity: 0.45; }
-.tab--drop-before { box-shadow: inset 3px 0 var(--brand); }
-.tab--drop-after { box-shadow: inset -3px 0 var(--brand); }
+/* Dragging a tab: it follows the pointer, lifted above the others, which
+   slide aside to open the gap where it will land. */
+.tab-item--dragging { z-index: 2; }
+.tab-item--dragging > .tab {
+  color: var(--text);
+  background: var(--bg);
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 10px rgb(15 23 42 / 0.2);
+  cursor: grabbing;
+}
+.tab-item--dragging > .tab[aria-selected='true'] { color: var(--brand); }
+/* Far above or below the bar, letting go puts the tab back. */
+.tab-item--outside > .tab, .tab-item--outside > .tab[aria-selected='true'] { color: var(--muted); border-style: dashed; box-shadow: none; }
+.tab-item--shifting { transition: transform 150ms ease; }
+.tab-item--settling { transition: transform 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .tab-item--shifting, .tab-item--settling { transition: none; }
+}
 /* While renaming, the field looks like the active tab (no focus ring). */
 input.tab-input,
 input.tab-input:focus-visible {

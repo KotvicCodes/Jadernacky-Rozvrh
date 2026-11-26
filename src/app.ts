@@ -1,7 +1,6 @@
 import { DEFAULT_COLOR_ID, KRUH_OPTIONS, PROGRAMS, canonicalSpecId, formatSpecId, parseSpecId } from './config';
 import { openLessonDialog } from './dialog';
 import { h } from './dom';
-import { enablePointerDrag } from './drag';
 import { downloadPdf, downloadPng } from './export';
 import { openFinderDialog, renderFinderPanel, type FinderSearch } from './finder';
 import { renderGrid, type GridOverlay } from './grid';
@@ -10,6 +9,7 @@ import { renderMenu } from './menu';
 import { cleanText, createSchedule, normalizeLesson, scheduleLabel, type Lesson, type LessonDraft, type Schedule } from './model';
 import { findReplacements } from './replacements';
 import { loadState, saveState, type AppState } from './storage';
+import { enableTabDrag } from './tab-drag';
 
 /** Author's GitHub profile (header credit) and this project's repository (bug link). */
 const AUTHOR_URL = 'https://github.com/KotvicCodes';
@@ -164,27 +164,14 @@ export class App {
       const close = h('button', { type: 'button', class: 'tab-close', tabindex: -1, 'aria-label': `Zavřít rozvrh ${label}`, title: `Zavřít rozvrh ${label}` }, '×');
       close.addEventListener('click', () => this.deleteSchedule(s.id));
       const item = h('div', { class: 'tab-item', role: 'presentation' }, tab, close);
-      let targetIndex = i;
-      const clearDrag = () => {
-        tab.classList.remove('tab--dragging');
-        this.tabs.querySelectorAll('.tab--drop-before, .tab--drop-after').forEach((el) => el.classList.remove('tab--drop-before', 'tab--drop-after'));
-      };
-      enablePointerDrag(tab, {
-        scrollHost: this.tabs,
-        onStart: () => { tab.classList.add('tab--dragging'); this.lastTabClick = { id: '', at: 0 }; },
-        onMove: (point) => {
-          const rect = this.tabs.getBoundingClientRect();
-          clearDrag();
-          tab.classList.add('tab--dragging');
-          targetIndex = i;
-          if (point.y < rect.top - 30 || point.y > rect.bottom + 30) return;
-          const others = [...this.tabs.querySelectorAll<HTMLElement>('[data-schedule-id]')].filter((el) => el !== tab);
-          targetIndex = others.filter((el) => { const r = el.getBoundingClientRect(); return point.x > r.left + r.width / 2; }).length;
-          const marker = others[targetIndex] ?? others.at(-1);
-          marker?.classList.add(targetIndex === others.length ? 'tab--drop-after' : 'tab--drop-before');
+      enableTabDrag(item, tab, {
+        bar: this.tabs,
+        items: () => [...this.tabs.querySelectorAll<HTMLElement>('.tab-item')],
+        onStart: () => { this.lastTabClick = { id: '', at: 0 }; },
+        onDrop: (target) => {
+          this.reorderSchedule(s.id, target);
+          return this.tabFor(s.id)?.closest<HTMLElement>('.tab-item') ?? undefined;
         },
-        onEnd: () => { clearDrag(); this.reorderSchedule(s.id, targetIndex); },
-        onCancel: clearDrag,
       });
       tab.addEventListener('click', (e) => {
         const now = Date.now();

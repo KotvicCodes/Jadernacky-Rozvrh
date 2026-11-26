@@ -111,6 +111,89 @@ describe('timetable tabs', () => {
   });
 });
 
+describe('dragging timetable tabs', () => {
+  let root: HTMLElement;
+  const items = () => [...root.querySelectorAll<HTMLElement>('.tab-item')];
+  const pointer = (el: Element, type: string, x: number, y = 10) => {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+    Object.entries({ pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y }).forEach(([key, value]) => Object.defineProperty(event, key, { value }));
+    el.dispatchEvent(event);
+  };
+  /** Lays the three tabs out 100 px wide with a 4 px gap, in a 20 px high bar. */
+  const layOut = () => {
+    root.querySelector<HTMLElement>('.tabs')!.getBoundingClientRect = () => ({ left: 0, right: 600, top: 0, bottom: 20, width: 600, height: 20 }) as DOMRect;
+    items().forEach((item, i) => {
+      item.getBoundingClientRect = () => {
+        const shift = Number(/translateX\((-?[\d.]+)px\)/.exec(item.style.transform)?.[1] ?? 0);
+        return { left: i * 104 + shift, right: i * 104 + 100 + shift, top: 0, bottom: 20, width: 100, height: 20 } as DOMRect;
+      };
+    });
+  };
+  beforeEach(() => {
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    HTMLElement.prototype.hasPointerCapture = vi.fn(() => true);
+    HTMLElement.prototype.releasePointerCapture = vi.fn();
+    root = setup();
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    root.querySelector<HTMLElement>('.tabs')!.style.columnGap = '4px';
+    layOut();
+  });
+  const capture = { set: HTMLElement.prototype.setPointerCapture, has: HTMLElement.prototype.hasPointerCapture, release: HTMLElement.prototype.releasePointerCapture };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Object.assign(HTMLElement.prototype, { setPointerCapture: capture.set, hasPointerCapture: capture.has, releasePointerCapture: capture.release });
+  });
+
+  it('moves the tab with the pointer and slides the others aside to open a gap', () => {
+    const [first, second, third] = items();
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 80);
+    expect(first!.classList.contains('tab-item--dragging')).toBe(true);
+    expect(first!.style.transform).toBe('translateX(30px)');
+    expect([second!.style.transform, third!.style.transform]).toEqual(['', '']);
+    pointer(tabs(root)[0]!, 'pointermove', 170);
+    expect(first!.style.transform).toBe('translateX(120px)');
+    expect([second!.style.transform, third!.style.transform]).toEqual(['translateX(-104px)', '']);
+  });
+
+  it('saves the new order on release and keeps the active tab', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 400);
+    pointer(tabs(root)[0]!, 'pointerup', 400);
+    expect(loadState().schedules.map((s) => s.id)).toEqual([ids[1], ids[2], ids[0]]);
+    expect(loadState().activeId).toBe(ids[2]);
+    expect(items().every((item) => !item.classList.contains('tab-item--dragging'))).toBe(true);
+  });
+
+  it('puts the tab back on Escape or when released far from the tab bar', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 400);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(items()[1]!.style.transform).toBe('');
+
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 400, 200);
+    expect(items()[1]!.style.transform).toBe('');
+    expect(items()[0]!.classList.contains('tab-item--outside')).toBe(true);
+    pointer(tabs(root)[0]!, 'pointerup', 400, 200);
+    expect(loadState().schedules.map((s) => s.id)).toEqual(ids);
+    expect(items()[0]!.classList.contains('tab-item--dragging')).toBe(false);
+    expect(items()[0]!.classList.contains('tab-item--outside')).toBe(false);
+  });
+
+  it('still switches tabs on a click without movement', () => {
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointerup', 50);
+    tabs(root)[0]!.click();
+    expect(tabs(root)[0]!.getAttribute('aria-selected')).toBe('true');
+  });
+});
+
 describe('closing timetable tabs', () => {
   let root: HTMLElement;
   const closeButtons = () => [...root.querySelectorAll<HTMLButtonElement>('.tab-close')];
