@@ -294,6 +294,57 @@ describe('lesson edits while the active schedule changes', () => {
   });
 });
 
+describe('deleting a lesson without the dialog', () => {
+  afterEach(() => vi.useRealTimers());
+  function withLesson() {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')); };
+    const root = setup();
+    root.querySelector<HTMLButtonElement>('.slot')!.click();
+    document.querySelector<HTMLInputElement>('dialog input[name="subject"]')!.value = 'MAN';
+    document.querySelector<HTMLFormElement>('dialog form')!.requestSubmit();
+    return root;
+  }
+  const lessonEl = (root: HTMLElement) => root.querySelector<HTMLElement>('.lesson');
+  const undoButton = (root: HTMLElement) => [...root.querySelectorAll<HTMLButtonElement>('.status button')].find((b) => b.textContent === 'Vrátit');
+
+  it('deletes the focused lesson with Delete and offers Vrátit to bring it back', async () => {
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    const saved = loadState().schedules[0]!.lessons[0]!;
+    lessonEl(root)!.focus();
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    expect(loadState().schedules[0]!.lessons).toEqual([]);
+    expect(lessonEl(root)).toBeNull();
+    expect(root.querySelector('.status')!.textContent).toBe('Smazáno: MANVrátit');
+    // Focus stays where the lesson was.
+    expect((document.activeElement as HTMLElement).dataset).toMatchObject({ day: String(saved.day), hour: String(saved.start) });
+    undoButton(root)!.click();
+    expect(loadState().schedules[0]!.lessons).toEqual([saved]);
+    expect(root.querySelector('.status')!.textContent).toBe('Vráceno: MAN');
+    expect(document.activeElement).toBe(lessonEl(root));
+  });
+
+  it('removes the Vrátit button after a few seconds', async () => {
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    vi.useFakeTimers();
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+    expect(undoButton(root)).toBeDefined();
+    vi.advanceTimersByTime(8000);
+    expect(undoButton(root)).toBeUndefined();
+    expect(root.querySelector('.status')!.textContent).toBe('Smazáno: MAN');
+  });
+
+  it('drops the Vrátit button when another message replaces it', async () => {
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    expect(undoButton(root)).toBeUndefined();
+  });
+});
+
 describe('timetable ID in the corner', () => {
   it('is typed by hand on click, and drives the Obor/Kruh pickers', () => {
     const root = setup();

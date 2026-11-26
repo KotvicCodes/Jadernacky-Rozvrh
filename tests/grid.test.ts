@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HOUR_COUNT } from '../src/config';
-import { dropStart, renderGrid } from '../src/grid';
+import { DELETE_DISTANCE, dropStart, isOutside, renderGrid } from '../src/grid';
 import { createSchedule, normalizeLesson } from '../src/model';
 
 describe('renderGrid', () => {
@@ -63,5 +63,100 @@ describe('keyboard moves', () => {
     expect(onLessonMove).toHaveBeenCalledWith(lesson, 1, 18);
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true }));
     expect(onLessonMove).toHaveBeenLastCalledWith(lesson, 0, 17);
+  });
+});
+
+describe('deleting a lesson by dragging it off the timetable', () => {
+  const box = { left: 100, right: 900, top: 100, bottom: 500 };
+
+  it('counts only drops clearly outside the timetable', () => {
+    expect(isOutside({ x: 500, y: 300 }, box)).toBe(false);
+    // Near the edge (where dragging auto-scrolls) is not outside yet.
+    expect(isOutside({ x: 100 - DELETE_DISTANCE, y: 300 }, box)).toBe(false);
+    expect(isOutside({ x: 900 + DELETE_DISTANCE, y: 520 }, box)).toBe(false);
+    expect(isOutside({ x: 99 - DELETE_DISTANCE, y: 300 }, box)).toBe(true);
+    expect(isOutside({ x: 500, y: 501 + DELETE_DISTANCE }, box)).toBe(true);
+    expect(isOutside({ x: 500, y: 99 - DELETE_DISTANCE }, box)).toBe(true);
+  });
+
+  function setup() {
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const schedule = createSchedule();
+    const lesson = normalizeLesson({ day: 1, start: 10, duration: 2, subject: 'MAN' });
+    schedule.lessons.push(lesson);
+    const handlers = { onSlotClick: vi.fn(), onLessonClick: vi.fn(), onLessonMove: vi.fn(), onLessonDelete: vi.fn() };
+    const grid = renderGrid(schedule, handlers);
+    document.body.replaceChildren(grid);
+    grid.getBoundingClientRect = () => ({ ...box, width: 800, height: 400 }) as DOMRect;
+    grid.querySelectorAll<HTMLElement>('.track').forEach((track, day) => {
+      track.getBoundingClientRect = () => ({ left: 220, right: 900, top: 140 + day * 64, bottom: 204 + day * 64, width: 680, height: 64 }) as DOMRect;
+    });
+    const el = grid.querySelector<HTMLElement>('.lesson')!;
+    el.getBoundingClientRect = () => ({ left: 333, right: 446, top: 204, bottom: 268, width: 113, height: 64 }) as DOMRect;
+    Object.assign(el, { setPointerCapture: vi.fn(), hasPointerCapture: vi.fn(() => true), releasePointerCapture: vi.fn() });
+    const pointer = (type: string, x: number, y: number) => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+      Object.entries({ pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y }).forEach(([key, value]) => Object.defineProperty(event, key, { value }));
+      el.dispatchEvent(event);
+    };
+    return { grid, el, lesson, handlers, pointer };
+  }
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  it('shows "Pustit = smazat" instead of a drop preview outside, and deletes on release', () => {
+    const { grid, el, lesson, handlers, pointer } = setup();
+    pointer('pointerdown', 350, 230);
+    pointer('pointermove', 500, 230);
+    expect(grid.querySelector('.drop-preview')).not.toBeNull();
+    expect(el.classList.contains('lesson--deleting')).toBe(false);
+    pointer('pointermove', 500, 600);
+    expect(grid.querySelector('.drop-preview')).toBeNull();
+    expect(el.classList.contains('lesson--deleting')).toBe(true);
+    // The board clips the lesson, so a ghost under the pointer says what happens.
+    const ghost = document.querySelector<HTMLElement>('body > .lesson-ghost')!;
+    expect(ghost.textContent).toBe('Pustit = smazat');
+    expect([ghost.style.left, ghost.style.top, ghost.style.width]).toEqual(['483px', '574px', '113px']);
+    pointer('pointerup', 500, 600);
+    expect(handlers.onLessonDelete).toHaveBeenCalledWith(lesson);
+    expect(handlers.onLessonMove).not.toHaveBeenCalled();
+    expect(el.classList.contains('lesson--deleting')).toBe(false);
+    expect(document.querySelector('.lesson-ghost')).toBeNull();
+  });
+
+  it('cancels the delete when dragged back over the grid', () => {
+    const { el, handlers, pointer } = setup();
+    pointer('pointerdown', 350, 230);
+    pointer('pointermove', 500, 600);
+    pointer('pointermove', 500, 300);
+    expect(el.classList.contains('lesson--deleting')).toBe(false);
+    expect(document.querySelector('.lesson-ghost')).toBeNull();
+    pointer('pointerup', 500, 300);
+    expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+    expect(handlers.onLessonMove).toHaveBeenCalled();
+  });
+
+  it('does nothing when released just past the edge, or after Escape', () => {
+    const { handlers, pointer } = setup();
+    pointer('pointerdown', 350, 230);
+    pointer('pointermove', 500, 520);
+    pointer('pointerup', 500, 520);
+    pointer('pointerdown', 350, 230);
+    pointer('pointermove', 500, 600);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+    expect(handlers.onLessonMove).not.toHaveBeenCalled();
+  });
+
+  it('deletes with Delete or Backspace on a focused lesson', () => {
+    const { el, lesson, handlers } = setup();
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }));
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace' }));
+    expect(handlers.onLessonDelete).toHaveBeenCalledTimes(2);
+    expect(handlers.onLessonDelete).toHaveBeenCalledWith(lesson);
+    expect(el.getAttribute('aria-keyshortcuts')).toContain('Delete');
   });
 });

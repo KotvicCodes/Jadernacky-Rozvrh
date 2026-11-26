@@ -10,6 +10,8 @@ export interface GridHandlers {
   onLessonClick(lesson: Lesson): void;
   /** Called when a lesson is dragged (or moved with Alt+arrows) to a new slot. */
   onLessonMove(lesson: Lesson, day: number, start: number): void;
+  /** Called when a lesson is dropped clearly outside the timetable, or Delete is pressed on it. */
+  onLessonDelete?(lesson: Lesson): void;
   /** Called with the text typed into the timetable's ID (the top-left corner). */
   onSpecIdEdit?(value: string): void;
 }
@@ -20,6 +22,19 @@ export interface GridOverlay {
   options: readonly ReplacementOption[];
   selectedKey: string | null;
   onSelect(key: string): void;
+}
+
+/**
+ * How far (in screen pixels) beyond the timetable's visible box a lesson must
+ * be dropped to delete it. Dragging near the edge only scrolls; between the
+ * two, letting go does nothing.
+ */
+export const DELETE_DISTANCE = 40;
+
+/** Whether `point` is clearly outside `box`, so a lesson dropped there is deleted. */
+export function isOutside(point: DragPoint, box: { left: number; right: number; top: number; bottom: number }): boolean {
+  return point.x < box.left - DELETE_DISTANCE || point.x > box.right + DELETE_DISTANCE
+    || point.y < box.top - DELETE_DISTANCE || point.y > box.bottom + DELETE_DISTANCE;
 }
 
 const BASE_ROW_HEIGHT = 64;
@@ -60,9 +75,29 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   let scale = 1;
   let target: { day: number; start: number } | null = null;
   let preview: HTMLElement | null = null;
+  let deleting = false;
+  // The timetable clips what leaves it, so off the board a ghost of the
+  // lesson follows the pointer instead and says what letting go does.
+  const ghost = h('div', { class: 'lesson-ghost', 'aria-hidden': 'true' }, h('span', { class: 'lesson-delete-hint' }, 'Pustit = smazat'));
+  const setDeleting = (point: DragPoint | null) => {
+    deleting = point !== null && Boolean(handlers.onLessonDelete);
+    el.classList.toggle('lesson--deleting', deleting);
+    if (!deleting) {
+      ghost.remove();
+      return;
+    }
+    Object.assign(ghost.style, {
+      left: `${sourceRect.left + point!.x - origin.x}px`,
+      top: `${sourceRect.top + point!.y - origin.y}px`,
+      width: `${sourceRect.width}px`,
+      height: `${sourceRect.height}px`,
+    });
+    if (!ghost.isConnected) document.body.append(ghost);
+  };
   const cleanup = () => {
     el.classList.remove('lesson--dragging');
     el.style.transform = '';
+    setDeleting(null);
     preview?.remove();
     preview = null;
     target = null;
@@ -92,6 +127,7 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
         return point.x >= Math.max(r.left, visible.left, labelRight) && point.x <= Math.min(r.right, visible.right)
           && point.y >= r.top && point.y < r.bottom;
       });
+      setDeleting(!track && isOutside(point, scrollHost.getBoundingClientRect()) ? point : null);
       if (!track) {
         preview?.remove();
         preview = null;
@@ -108,14 +144,22 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
     },
     onEnd() {
       const moved = target;
+      const remove = deleting;
       cleanup();
-      if (moved && (moved.day !== lesson.day || moved.start !== lesson.start)) handlers.onLessonMove(lesson, moved.day, moved.start);
+      if (remove) handlers.onLessonDelete?.(lesson);
+      else if (moved && (moved.day !== lesson.day || moved.start !== lesson.start)) handlers.onLessonMove(lesson, moved.day, moved.start);
     },
     onCancel: cleanup,
   });
 
-  // Keyboard alternative: Alt+←/→ moves by an hour, Alt+↑/↓ by a day.
+  // Keyboard alternative: Alt+←/→ moves by an hour, Alt+↑/↓ by a day;
+  // Delete (⌫ on a Mac) deletes, like dropping the lesson off the timetable.
   el.addEventListener('keydown', (e) => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !e.altKey && !e.ctrlKey && !e.metaKey && handlers.onLessonDelete) {
+      e.preventDefault();
+      handlers.onLessonDelete(lesson);
+      return;
+    }
     if (!e.altKey) return;
     const moves: Record<string, [number, number]> = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
     const move = moves[e.key];
@@ -150,7 +194,7 @@ function renderLesson(
       class: `lesson${lanes > 1 ? ' lesson--compact' : ''}${state}`,
       'data-lesson-id': lesson.id,
       'aria-label': `Upravit: ${lessonLabel(lesson)}`,
-      'aria-keyshortcuts': 'Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown',
+      'aria-keyshortcuts': `Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown${handlers.onLessonDelete ? ' Delete' : ''}`,
       title: lessonLabel(lesson),
       style: [
         `left:${pct(lesson.start - FIRST_HOUR)}`,

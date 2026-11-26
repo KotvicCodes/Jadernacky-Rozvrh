@@ -117,11 +117,13 @@ export class App {
     return this.state.schedules.find((s) => s.id === this.state.activeId) ?? this.state.schedules[0]!;
   }
 
-  private commit(message?: string, schedule = this.active): void {
+  /** Saves and re-renders; returns whether the browser kept the change. */
+  private commit(message?: string, schedule = this.active): boolean {
     schedule.updatedAt = Date.now();
     const ok = saveState(this.state);
     this.status.textContent = ok ? (message ?? '') : 'Rozvrh se nepodařilo uložit v prohlížeči (soukromé okno?).';
     this.render();
+    return ok;
   }
 
   /** Last tab click, to spot a double click even if the tab was re-rendered in between. */
@@ -452,6 +454,7 @@ export class App {
         onSlotClick: (day, hour) => void this.addLesson(day, hour),
         onLessonClick: (lesson) => void this.editLesson(lesson),
         onLessonMove: (lesson, day, start) => this.moveLesson(lesson, day, start),
+        onLessonDelete: (lesson) => this.deleteLesson(lesson),
         onSpecIdEdit: (value) => {
           this.active.specId = canonicalSpecId(cleanText(value));
           this.commit(this.active.specId ? `ID rozvrhu: ${this.active.specId}` : 'ID rozvrhu smazáno.');
@@ -477,6 +480,35 @@ export class App {
   }
 
   /** Stáhnout → PDF / PNG. The Stáhnout button stays disabled until the file is ready. */
+  /**
+   * Deletes a lesson dropped off the timetable (or Delete on it), like the
+   * dialog's Smazat, and offers to undo it for a while: a drag can end
+   * outside by accident.
+   */
+  private deleteLesson(lesson: Lesson): void {
+    const schedule = this.active;
+    const index = schedule.lessons.findIndex((l) => l.id === lesson.id);
+    if (index < 0) return;
+    const hadFocus = document.activeElement?.closest('[data-lesson-id]') !== null;
+    const [removed] = schedule.lessons.splice(index, 1);
+    const name = removed!.subject || 'Hodina';
+    const saved = this.commit(`Smazáno: ${name}`, schedule);
+    // Keyboard users stay where the lesson was.
+    if (hadFocus) this.boardHost.querySelector<HTMLElement>(`.slot[data-day="${removed!.day}"][data-hour="${removed!.start}"]`)?.focus();
+    if (!saved) return;
+    const undo = h('button', { type: 'button', class: 'status-action' }, 'Vrátit');
+    undo.addEventListener('click', () => {
+      clearTimeout(timer);
+      if (!this.state.schedules.includes(schedule) || schedule.lessons.some((l) => l.id === removed!.id)) return;
+      schedule.lessons.splice(Math.min(index, schedule.lessons.length), 0, removed!);
+      this.commit(`Vráceno: ${name}`, schedule);
+      if (this.active === schedule) [...this.boardHost.querySelectorAll<HTMLElement>('[data-lesson-id]')].find((el) => el.dataset.lessonId === removed!.id)?.focus();
+    });
+    this.status.append(undo);
+    // Any later message replaces the button; otherwise it goes after a while.
+    const timer = setTimeout(() => undo.remove(), UNDO_MS);
+  }
+
   private async runExport(kind: 'pdf' | 'png'): Promise<void> {
     if (this.exporting) return;
     this.exporting = true;
@@ -524,6 +556,9 @@ export class App {
     }
   }
 }
+
+/** How long a deleted lesson can be brought back with Vrátit. */
+const UNDO_MS = 8000;
 
 /** Value of the Obor option holding an ID that matches no known program. */
 const CUSTOM_SPEC = '__custom__';
