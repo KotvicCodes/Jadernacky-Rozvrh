@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app';
+import { downloadPdf, downloadPng } from '../src/export';
 import { loadState } from '../src/storage';
+
+vi.mock('../src/export', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/export')>()),
+  downloadPdf: vi.fn(async () => {}),
+  downloadPng: vi.fn(async () => {}),
+}));
 
 function setup(): HTMLElement {
   localStorage.clear();
@@ -9,6 +16,13 @@ function setup(): HTMLElement {
   document.body.append(root);
   new App(root);
   return root;
+}
+
+function menuFor(root: HTMLElement, label: string) {
+  const button = [...root.querySelectorAll<HTMLButtonElement>('.menu-wrap > .btn')].find((b) => b.textContent === label)!;
+  const menu = button.parentElement!.querySelector<HTMLElement>('.menu')!;
+  const items = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+  return { button, menu, items };
 }
 
 const tabs = (root: HTMLElement) => [...root.querySelectorAll<HTMLButtonElement>('.tab[role="tab"]')];
@@ -142,7 +156,7 @@ describe('toolbar and header', () => {
   it('has the download, import, replacement and delete buttons in that order, and no add button', () => {
     const root = setup();
     const buttons = [...root.querySelectorAll<HTMLButtonElement>('.toolbar-actions > button, .toolbar-actions > .menu-wrap > .btn')].map((b) => b.textContent);
-    expect(buttons).toEqual(['Stáhnout PNG', 'Stáhnout PDF', 'Importovat', 'Nahradit hodinu', 'Smazat rozvrh']);
+    expect(buttons).toEqual(['Stáhnout', 'Importovat', 'Nahradit hodinu', 'Smazat rozvrh']);
   });
 
   it('shows no subtitle or hint, but credits the author and links bug reports to the repo', () => {
@@ -157,6 +171,54 @@ describe('toolbar and header', () => {
     expect(bug.textContent).toBe('Našel/našla jsi bug? Oprav ho!');
     expect(bug.href).toBe('https://github.com/KotvicCodes/Jadernacky-Rozvrh');
     expect([credit.rel, bug.rel]).toEqual(['noopener', 'noopener']);
+  });
+});
+
+describe('Stáhnout menu', () => {
+  beforeEach(() => vi.mocked(downloadPdf).mockClear() && vi.mocked(downloadPng).mockClear());
+
+  it('offers PDF and PNG in one menu that works like Importovat', () => {
+    const root = setup();
+    const { button, menu, items } = menuFor(root, 'Stáhnout');
+    expect(button.getAttribute('aria-haspopup')).toBe('menu');
+    expect(items.map((i) => i.textContent)).toEqual(['PDF', 'PNG']);
+    button.click();
+    expect(menu.hidden).toBe(false);
+    expect(document.activeElement).toBe(items[0]);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(items[1]);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(items[0]);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(button);
+    button.click();
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(menu.hidden).toBe(true);
+  });
+
+  it('downloads the chosen format and keeps the button disabled while the file is prepared', async () => {
+    let finish!: () => void;
+    vi.mocked(downloadPdf).mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    const root = setup();
+    const { button, menu, items } = menuFor(root, 'Stáhnout');
+    button.click();
+    items[0]!.click();
+    expect(menu.hidden).toBe(true);
+    expect(downloadPdf).toHaveBeenCalledOnce();
+    expect(downloadPng).not.toHaveBeenCalled();
+    expect(root.querySelector('.status')!.textContent).toBe('Připravuji soubor…');
+    // Stays disabled across a re-render in the meantime.
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    expect(menuFor(root, 'Stáhnout').button.disabled).toBe(true);
+    finish();
+    await vi.waitFor(() => expect(root.querySelector('.status')!.textContent).toBe('PDF staženo.'));
+    expect(menuFor(root, 'Stáhnout').button.disabled).toBe(false);
+
+    menuFor(root, 'Stáhnout').button.click();
+    menuFor(root, 'Stáhnout').items[1]!.click();
+    await vi.waitFor(() => expect(root.querySelector('.status')!.textContent).toBe('PNG staženo.'));
+    expect(downloadPng).toHaveBeenCalledOnce();
   });
 });
 
@@ -195,8 +257,7 @@ describe('Importovat menu', () => {
 
   it('offers import from the device and from the FJFI website', () => {
     const root = setup();
-    const button = root.querySelector<HTMLButtonElement>('.menu-wrap > .btn')!;
-    const menu = root.querySelector<HTMLElement>('.menu')!;
+    const { button, menu } = menuFor(root, 'Importovat');
     expect(menu.hidden).toBe(true);
     button.click();
     expect(menu.hidden).toBe(false);
@@ -208,8 +269,10 @@ describe('Importovat menu', () => {
 
   it('closes the import menu when keyboard focus leaves it', () => {
     const root = setup();
-    root.querySelector<HTMLButtonElement>('.menu-wrap > .btn')!.click();
+    const { button, menu } = menuFor(root, 'Importovat');
+    button.click();
+    expect(menu.hidden).toBe(false);
     root.querySelector<HTMLButtonElement>('.btn-danger')!.focus();
-    expect(root.querySelector<HTMLElement>('.menu')!.hidden).toBe(true);
+    expect(menu.hidden).toBe(true);
   });
 });

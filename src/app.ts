@@ -6,6 +6,7 @@ import { downloadPdf, downloadPng } from './export';
 import { openFinderDialog, renderFinderPanel, type FinderSearch } from './finder';
 import { renderGrid, type GridOverlay } from './grid';
 import { startInlineEdit } from './inline-edit';
+import { renderMenu } from './menu';
 import { cleanText, createSchedule, normalizeLesson, scheduleLabel, type Lesson, type LessonDraft, type Schedule } from './model';
 import { findReplacements } from './replacements';
 import { loadState, saveState, type AppState } from './storage';
@@ -125,7 +126,9 @@ export class App {
 
   /** Last tab click, to spot a double click even if the tab was re-rendered in between. */
   private lastTabClick = { id: '', at: 0 };
-  private closeImportMenu?: () => void;
+  /** Closes the toolbar menus of the previous render, so they stop listening for outside clicks. */
+  private closeMenus: Array<() => void> = [];
+  private exporting = false;
 
   private reorderSchedule(id: string, index: number): void {
     const from = this.state.schedules.findIndex((s) => s.id === id);
@@ -253,7 +256,7 @@ export class App {
   }
 
   private renderToolbar(): void {
-    this.closeImportMenu?.();
+    this.closeMenus.forEach((close) => close());
     const active = this.active;
 
     // Obor + kruh build the ID shown on the timetable ("JCF1"). An ID that
@@ -295,11 +298,12 @@ export class App {
       this.commit('Rozvrh smazán.');
     });
 
-
-    const pdfBtn = h('button', { type: 'button', class: 'btn' }, 'Stáhnout PDF');
-    pdfBtn.addEventListener('click', () => void this.runExport('pdf', pdfBtn));
-    const pngBtn = h('button', { type: 'button', class: 'btn' }, 'Stáhnout PNG');
-    pngBtn.addEventListener('click', () => void this.runExport('png', pngBtn));
+    const download = renderMenu('Stáhnout', [
+      { label: 'PDF', onSelect: () => void this.runExport('pdf') },
+      { label: 'PNG', onSelect: () => void this.runExport('png') },
+    ]);
+    download.button.classList.add('btn-download');
+    download.button.disabled = this.exporting;
 
     const fileInput = h('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true });
     fileInput.addEventListener('change', () => {
@@ -307,7 +311,11 @@ export class App {
       if (file) void this.importFile(file, file.name);
       fileInput.value = '';
     });
-    const importMenu = this.renderImportMenu(() => fileInput.click());
+    const importMenu = renderMenu('Importovat', [
+      { label: 'Ze zařízení', onSelect: () => fileInput.click() },
+      { label: 'Z webu FJFI', onSelect: () => void this.importFromWeb() },
+    ]);
+    this.closeMenus = [download.close, importMenu.close];
     const findBtn = h('button', { type: 'button', class: 'btn btn-find', 'aria-pressed': this.finder ? 'true' : 'false' }, 'Nahradit hodinu');
     findBtn.addEventListener('click', () => void this.openFinder());
 
@@ -320,59 +328,8 @@ export class App {
         h('label', { class: 'toolbar-field' }, h('span', {}, 'Obor'), programSelect),
         h('label', { class: 'toolbar-field toolbar-field--narrow' }, h('span', {}, 'Kruh'), groupSelect),
       ),
-      h('div', { class: 'toolbar-row toolbar-actions' }, pngBtn, pdfBtn, importMenu, fileInput, findBtn, deleteBtn),
+      h('div', { class: 'toolbar-row toolbar-actions' }, download.element, importMenu.element, fileInput, findBtn, deleteBtn),
     );
-  }
-
-  /** "Importovat" opens a small menu: a file from this device, or a timetable straight from the FJFI website. */
-  private renderImportMenu(pickFile: () => void): HTMLElement {
-    const button = h('button', { type: 'button', class: 'btn btn-menu', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, 'Importovat');
-    const fromDevice = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Ze zařízení');
-    const fromWeb = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Z webu FJFI');
-    const menu = h('div', { class: 'menu', role: 'menu', hidden: true }, fromDevice, fromWeb);
-    const wrap = h('div', { class: 'menu-wrap' }, button, menu);
-
-    const onOutside = (e: Event) => {
-      if (!wrap.contains(e.target as Node)) close();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        close();
-        button.focus();
-      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        const items = [fromDevice, fromWeb];
-        const i = items.indexOf(document.activeElement as HTMLButtonElement);
-        items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]!.focus();
-      }
-    };
-    const open = () => {
-      menu.hidden = false;
-      button.setAttribute('aria-expanded', 'true');
-      document.addEventListener('pointerdown', onOutside);
-      wrap.addEventListener('keydown', onKey);
-      fromDevice.focus();
-    };
-    const close = () => {
-      menu.hidden = true;
-      button.setAttribute('aria-expanded', 'false');
-      document.removeEventListener('pointerdown', onOutside);
-      wrap.removeEventListener('keydown', onKey);
-    };
-    this.closeImportMenu = close;
-    wrap.addEventListener('focusout', (e) => {
-      if (!wrap.contains(e.relatedTarget as Node | null)) close();
-    });
-    button.addEventListener('click', () => (menu.hidden ? open() : close()));
-    fromDevice.addEventListener('click', () => {
-      close();
-      pickFile();
-    });
-    fromWeb.addEventListener('click', () => {
-      close();
-      void this.importFromWeb();
-    });
-    return wrap;
   }
 
   private async importFromWeb(): Promise<void> {
@@ -509,8 +466,13 @@ export class App {
     if (hadFocus) this.boardHost.querySelector<HTMLElement>(`[data-lesson-id="${CSS.escape(lesson.id)}"]`)?.focus();
   }
 
-  private async runExport(kind: 'pdf' | 'png', button: HTMLButtonElement): Promise<void> {
-    button.disabled = true;
+  /** Stáhnout → PDF / PNG. The Stáhnout button stays disabled until the file is ready. */
+  private async runExport(kind: 'pdf' | 'png'): Promise<void> {
+    if (this.exporting) return;
+    this.exporting = true;
+    const button = () => this.toolbar.querySelector<HTMLButtonElement>('.btn-download');
+    const first = button();
+    if (first) first.disabled = true;
     this.status.textContent = 'Připravuji soubor…';
     try {
       await (kind === 'pdf' ? downloadPdf(this.active) : downloadPng(this.active));
@@ -518,7 +480,14 @@ export class App {
     } catch (err) {
       this.status.textContent = `Export se nepovedl: ${err instanceof Error ? err.message : String(err)}`;
     } finally {
-      button.disabled = false;
+      this.exporting = false;
+      // The toolbar may have been re-rendered in the meantime.
+      const current = button();
+      if (current) {
+        const refocus = current === first && document.activeElement === document.body;
+        current.disabled = false;
+        if (refocus) current.focus();
+      }
     }
   }
 

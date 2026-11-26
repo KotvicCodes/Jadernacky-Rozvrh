@@ -16,7 +16,7 @@ download it as a PDF.
 - Click the ID in the timetable's top-left corner to type any ID by hand.
 - Overlapping (parallel) lessons are stacked, as on the official timetable.
 - Drag and drop lessons to another day or hour (snaps to whole hours); Alt + arrow keys do the same from the keyboard. On touch screens, drag from anywhere on a lesson; pinch to zoom for more detail. Dragging near the edges scrolls automatically when needed.
-- Download as **PDF** (A4 landscape) or **PNG**, drawn like the official timetable.
+- Download (Stáhnout → PDF / PNG) as **PDF** (A4 landscape) or **PNG**, drawn like the official timetable.
 - Exports carry the schedule data invisibly (PNG `tEXt` chunk, PDF Info entry), so they can be imported back later.
 - **Import** straight from the FJFI website (Importovat → Z webu FJFI): pick the year (ročník), study program, specialization where offered and, when the program has more than one, the kruh. Timetables are recognized once during deployment; importing downloads a small JSON file without running OCR in the browser. The list is not hardcoded: it is read from rozvrh.fjfi.cvut.cz on every deploy (see [Automatic updates and deployment](#automatic-updates-and-deployment)).
 - **Import** a timetable from a file (Importovat → Ze zařízení), by pasting (Ctrl+V) or by dropping it on the page:
