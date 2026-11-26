@@ -259,10 +259,6 @@ export function renderFinderPanel(props: FinderPanelProps): HTMLElement {
     clashSection = details;
   }
 
-  const notes = [
-    failed ? countLabel(failed, 'rozvrh se nepodařilo načíst', 'rozvrhy se nepodařilo načíst', 'rozvrhů se nepodařilo načíst') + '.' : '',
-    'Shoda podle kódu předmětu; učebna a vyučující se mohou lišit. Náhradu si domluv s vyučujícím.',
-  ].filter(Boolean);
 
   return h(
     'section',
@@ -271,6 +267,7 @@ export function renderFinderPanel(props: FinderPanelProps): HTMLElement {
     free.length ? h('h3', { class: 'finder-subhead' }, countLabel(free.length, 'volný termín', 'volné termíny', 'volných termínů')) : null,
     freeSection,
     clashSection,
-    h('p', { class: 'finder-note' }, notes.join(' ')),
+    // Only shown when some timetables could not be searched.
+    failed ? h('p', { class: 'finder-note' }, `${countLabel(failed, 'rozvrh se nepodařilo načíst', 'rozvrhy se nepodařilo načíst', 'rozvrhů se nepodařilo načíst')}.`) : null,
   );
 }
