@@ -8,7 +8,7 @@ download it as a PDF.
 ## Features
 
 - Timetable grid laid out like the official one: Monday–Friday rows, 8:00–20:00 columns.
-- Click any free hour slot to add a lesson; click a lesson to edit or delete it. Dragging a lesson clearly off the timetable (or pressing Delete / ⌫ on it) deletes it, with **Vrátit** in the status line for a few seconds to undo.
+- Click any free hour slot to add a lesson; click a lesson to edit or delete it. Dragging a lesson clearly off the timetable (or pressing Delete / ⌫ on it) deletes it, with **Vrátit** (or Ctrl+Z / ⌘Z) for a few seconds to undo.
 - Each lesson has a subject, classroom, lecturer, duration and colour.
 - Lessons always start on a whole hour (10:00, 11:00, …) and end by 20:00.
 - Colours follow the official scheme: one colour per department (katedra), labelled with its abbreviation (KM, KF, KHVJ, KIPL, KLFF, KMAT, KJCH, KDAIZ, KJR, KSI).

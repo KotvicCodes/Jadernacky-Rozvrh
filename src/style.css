@@ -185,9 +185,11 @@ input.tab-input:focus-visible {
 /* Space between the buttons and the timetable. */
 .board-host { margin-top: 2.25rem; min-width: 0; }
 .status { min-height: 1.2em; color: var(--muted); font-size: 0.85rem; }
-/* "Vrátit" after a lesson is deleted: a link-like button inside the status line. */
+/* The status message and, after a lesson is deleted, "Vrátit" beside it. */
+.status-line { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0.5rem; }
+.status-undo { font-size: 0.85rem; }
+.status-undo:empty { display: none; }
 .status-action {
-  margin-left: 0.5rem;
   padding: 0.1rem 0.3rem;
   border: 0;
   border-radius: 4px;

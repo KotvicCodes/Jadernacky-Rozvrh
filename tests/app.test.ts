@@ -326,7 +326,7 @@ describe('deleting a lesson without the dialog', () => {
     return root;
   }
   const lessonEl = (root: HTMLElement) => root.querySelector<HTMLElement>('.lesson');
-  const undoButton = (root: HTMLElement) => [...root.querySelectorAll<HTMLButtonElement>('.status button')].find((b) => b.textContent === 'Vrátit');
+  const undoButton = (root: HTMLElement) => [...root.querySelectorAll<HTMLButtonElement>('.status-line button')].find((b) => b.textContent === 'Vrátit');
 
   it('deletes the focused lesson with Delete and offers Vrátit to bring it back', async () => {
     const root = withLesson();
@@ -336,7 +336,8 @@ describe('deleting a lesson without the dialog', () => {
     lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
     expect(loadState().schedules[0]!.lessons).toEqual([]);
     expect(lessonEl(root)).toBeNull();
-    expect(root.querySelector('.status')!.textContent).toBe('Smazáno: MANVrátit');
+    expect(root.querySelector('.status')!.textContent).toBe('Smazáno: MAN');
+    expect(undoButton(root)!.getAttribute('aria-keyshortcuts')).toBe('Control+Z Meta+Z');
     // Focus stays where the lesson was.
     expect((document.activeElement as HTMLElement).dataset).toMatchObject({ day: String(saved.day), hour: String(saved.start) });
     undoButton(root)!.click();
@@ -356,12 +357,42 @@ describe('deleting a lesson without the dialog', () => {
     expect(root.querySelector('.status')!.textContent).toBe('Smazáno: MAN');
   });
 
-  it('drops the Vrátit button when another message replaces it', async () => {
+  it('drops the Vrátit button with the next edit', async () => {
     const root = withLesson();
     await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
     lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
     root.querySelector<HTMLButtonElement>('.tab-add')!.click();
     expect(undoButton(root)).toBeUndefined();
+    // Ctrl+Z no longer brings it back either.
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+    expect(loadState().schedules[0]!.lessons).toEqual([]);
+  });
+
+  it('undoes with Ctrl+Z or ⌘Z from wherever focus is, but not while typing', async () => {
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    const saved = loadState().schedules[0]!.lessons[0]!;
+    lessonEl(root)!.focus();
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    const select = root.querySelector<HTMLSelectElement>('.toolbar select')!;
+    select.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+    expect(loadState().schedules[0]!.lessons).toEqual([]);
+    (document.activeElement as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }));
+    expect(loadState().schedules[0]!.lessons).toEqual([saved]);
+    expect(undoButton(root)).toBeUndefined();
+  });
+
+  it('keeps Vrátit when an export finishes in the meantime', async () => {
+    let finish!: () => void;
+    vi.mocked(downloadPng).mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    menuFor(root, 'Stáhnout').button.click();
+    menuFor(root, 'Stáhnout').items[1]!.click();
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    finish();
+    await vi.waitFor(() => expect(root.querySelector('.status')!.textContent).toBe('PNG staženo.'));
+    expect(undoButton(root)).toBeDefined();
   });
 });
 

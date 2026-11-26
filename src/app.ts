@@ -22,6 +22,9 @@ export class App {
   private readonly tabs = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Rozvrhy' });
   private readonly toolbar = h('div', { class: 'toolbar' });
   private readonly status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+  /** Holds "Vrátit" after a lesson is deleted; kept apart so progress messages don't clear it. */
+  private readonly undoHost = h('span', { class: 'status-undo' });
+  private pendingUndo: { cancel(): void } | null = null;
   /** Open replacement finder: which timetable it belongs to, what it found, and the highlighted option. */
   private finder: { scheduleId: string; search: FinderSearch; selectedKey: string | null; clashesOpen: boolean; fresh: boolean } | null = null;
   private readonly boardResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.fitBoard());
@@ -42,7 +45,7 @@ export class App {
         this.tabs,
         this.toolbar,
         this.boardHost,
-        this.status,
+        h('div', { class: 'status-line' }, this.status, this.undoHost),
       ),
       h(
         'footer',
@@ -119,6 +122,8 @@ export class App {
 
   /** Saves and re-renders; returns whether the browser kept the change. */
   private commit(message?: string, schedule = this.active): boolean {
+    // Any further edit ends the chance to undo a deleted lesson.
+    this.pendingUndo?.cancel();
     schedule.updatedAt = Date.now();
     const ok = saveState(this.state);
     this.status.textContent = ok ? (message ?? '') : 'Rozvrh se nepodařilo uložit v prohlížeči (soukromé okno?).';
@@ -496,17 +501,38 @@ export class App {
     // Keyboard users stay where the lesson was.
     if (hadFocus) this.boardHost.querySelector<HTMLElement>(`.slot[data-day="${removed!.day}"][data-hour="${removed!.start}"]`)?.focus();
     if (!saved) return;
-    const undo = h('button', { type: 'button', class: 'status-action' }, 'Vrátit');
-    undo.addEventListener('click', () => {
-      clearTimeout(timer);
+    const undo = h(
+      'button',
+      { type: 'button', class: 'status-action', title: 'Vrátit smazanou hodinu (Ctrl+Z, na Macu ⌘Z)', 'aria-keyshortcuts': 'Control+Z Meta+Z' },
+      'Vrátit',
+    );
+    const restore = () => {
+      cancel();
       if (!this.state.schedules.includes(schedule) || schedule.lessons.some((l) => l.id === removed!.id)) return;
       schedule.lessons.splice(Math.min(index, schedule.lessons.length), 0, removed!);
       this.commit(`Vráceno: ${name}`, schedule);
       if (this.active === schedule) [...this.boardHost.querySelectorAll<HTMLElement>('[data-lesson-id]')].find((el) => el.dataset.lessonId === removed!.id)?.focus();
-    });
-    this.status.append(undo);
-    // Any later message replaces the button; otherwise it goes after a while.
-    const timer = setTimeout(() => undo.remove(), UNDO_MS);
+    };
+    // Ctrl+Z (⌘Z) undoes from anywhere while Vrátit is shown, except where it edits text.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.defaultPrevented) return;
+      if (document.querySelector('dialog[open]') || (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]'))) return;
+      e.preventDefault();
+      restore();
+    };
+    const cancel = () => {
+      clearTimeout(timer);
+      document.removeEventListener('keydown', onKey);
+      undo.remove();
+      if (this.pendingUndo === pending) this.pendingUndo = null;
+    };
+    const pending = { cancel };
+    undo.addEventListener('click', restore);
+    document.addEventListener('keydown', onKey);
+    this.undoHost.replaceChildren(undo);
+    this.pendingUndo = pending;
+    // Expires after a while, or with the next edit (see commit).
+    const timer = setTimeout(cancel, UNDO_MS);
   }
 
   private async runExport(kind: 'pdf' | 'png'): Promise<void> {
