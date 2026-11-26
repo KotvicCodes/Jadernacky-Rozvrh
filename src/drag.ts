@@ -20,6 +20,19 @@ export function enablePointerDrag(el: HTMLElement, options: {
   let suppressClick = false;
   /** Escape released a press before it became a drag: its click is cancelled too. */
   let cancelledPress = false;
+  /** Swallow the click that the cancelled press may still produce, and only that one. */
+  const cancelPressClick = (id: number | null) => {
+    cancelledPress = true;
+    const end = (e: PointerEvent) => {
+      if (e.pointerId !== id) return;
+      document.removeEventListener('pointerup', end, true);
+      document.removeEventListener('pointercancel', end, true);
+      // The click, if any, follows pointerup synchronously.
+      setTimeout(() => { cancelledPress = false; }, 0);
+    };
+    document.addEventListener('pointerup', end, true);
+    document.addEventListener('pointercancel', end, true);
+  };
 
   const stop = (cancelled: boolean) => {
     const wasDragging = dragging;
@@ -45,7 +58,7 @@ export function enablePointerDrag(el: HTMLElement, options: {
     // Cancelling a drag consumes the key; a mere press (no drag yet) is
     // released, its click cancelled, and the key left to the page.
     if (dragging) e.preventDefault();
-    else cancelledPress = true;
+    else cancelPressClick(pointerId);
     stop(true);
   };
   const onExtraPointer = (e: PointerEvent) => {

@@ -92,6 +92,19 @@ describe('pointer dragging', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it('does not swallow a later click when the cancelled press ends elsewhere', () => {
+    const onClick = vi.fn();
+    button.addEventListener('click', onClick);
+    pointer(button, 'pointerdown');
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    // Released off the button: no click on it follows.
+    pointer(document.body, 'pointerup');
+    vi.runAllTimers();
+    // A later keyboard activation (Enter/Space) still clicks.
+    button.click();
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
   it('ignores secondary pointers and cancels on Escape', () => {
     pointer(button, 'pointerdown', { isPrimary: false });
     expect(button.setPointerCapture).not.toHaveBeenCalled();

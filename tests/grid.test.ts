@@ -180,17 +180,14 @@ describe('deleting a lesson by dragging it off the timetable', () => {
     expect(handlers.onLessonMove).not.toHaveBeenCalled();
   });
 
-  describe('while the page auto-scrolls', () => {
-    /** Scrolls the page by `dy`: window.scrollY changes and the timetable moves up on screen. */
+  describe('when the timetable moves under the pointer', () => {
+    /** Moves the timetable `dy` px up on screen, as page auto-scroll or a layout shift would. */
     function scrollPage(grid: HTMLElement, dy: number) {
-      Object.defineProperty(window, 'scrollY', { configurable: true, value: dy });
       grid.getBoundingClientRect = () => ({ ...box, top: box.top - dy, bottom: box.bottom - dy, width: 800, height: 400 }) as DOMRect;
       grid.querySelectorAll<HTMLElement>('.track').forEach((track, day) => {
         track.getBoundingClientRect = () => ({ left: 220, right: 900, top: 140 + day * 64 - dy, bottom: 204 + day * 64 - dy, width: 680, height: 64 }) as DOMRect;
       });
     }
-    afterEach(() => Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 }));
-
     it('never arms a delete for a pointer held still, even after the page stops at its end', () => {
       const { grid, el, handlers, pointer } = setup();
       pointer('pointerdown', 350, 230);
@@ -213,6 +210,18 @@ describe('deleting a lesson by dragging it off the timetable', () => {
       pointer('pointermove', 500, 490);
       pointer('pointermove', 500, 490 + REARM_DISTANCE);
       expect(el.classList.contains('lesson--deleting')).toBe(true);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    });
+
+    it('treats any shift of the timetable alike, not only page scrolling', () => {
+      const { grid, el, pointer } = setup();
+      pointer('pointerdown', 350, 230);
+      pointer('pointermove', 500, 490);
+      // window.scrollY stays 0: content above the timetable shrank, or a mobile toolbar moved it.
+      scrollPage(grid, 120);
+      pointer('pointermove', 500, 490);
+      pointer('pointermove', 500, 490);
+      expect(el.classList.contains('lesson--deleting')).toBe(false);
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
     });
 

@@ -32,9 +32,10 @@ export interface GridOverlay {
 export const DELETE_DISTANCE = 40;
 
 /**
- * After the page auto-scrolls under the pointer, how far (in screen pixels)
- * the pointer must move by itself before letting go off the timetable deletes.
- * Larger than the jitter of a finger or hand held still.
+ * After the timetable moves under the pointer (page auto-scroll, layout shift,
+ * a mobile toolbar appearing), how far in screen pixels the pointer must move
+ * by itself before letting go off the timetable deletes. Larger than the
+ * jitter of a finger or hand held still.
  */
 export const REARM_DISTANCE = 8;
 
@@ -80,11 +81,12 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   let target: { day: number; start: number } | null = null;
   let preview: HTMLElement | null = null;
   let deleting = false;
-  // Edge auto-scrolling moves the timetable under a pointer held still, which
-  // must never turn a move into a delete. While the page scrolls, nothing is
-  // armed; afterwards the pointer has to move REARM_DISTANCE by itself first.
-  let scrollY = 0;
-  let scrolledAt: DragPoint | null = null;
+  // Only the pointer's own movement may take a lesson off the timetable. If the
+  // timetable itself moves on screen (edge auto-scroll, layout shift, mobile
+  // toolbar), nothing is armed until the pointer has moved REARM_DISTANCE by
+  // itself; a delete armed earlier is dropped too, so the safe outcome wins.
+  let boardAt: { left: number; top: number } | null = null;
+  let shiftedAt: DragPoint | null = null;
   // The timetable scrolls and clips what leaves it, so the lesson itself stays
   // put (faded) and a copy outside the timetable follows the pointer. Moving
   // the lesson inside the scroll box would clip it at the edges and widen the
@@ -105,7 +107,7 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
     setDeleting(false);
     float?.remove();
     float = null;
-    scrolledAt = null;
+    boardAt = shiftedAt = null;
     preview?.remove();
     preview = null;
     target = null;
@@ -115,7 +117,6 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
     scrollPage: true,
     onStart(point) {
       origin = point;
-      scrollY = window.scrollY;
       sourceRect = el.getBoundingClientRect();
       // On phones the board is zoomed out to fit; the copy is drawn the same size.
       const scale = Number(scrollHost.querySelector<HTMLElement>('.board')?.style.zoom) || 1;
@@ -146,11 +147,12 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
         return point.x >= Math.max(r.left, visible.left, labelRight) && point.x <= Math.min(r.right, visible.right)
           && point.y >= r.top && point.y < r.bottom;
       });
-      const pageScrolled = window.scrollY !== scrollY;
-      scrollY = window.scrollY;
-      if (pageScrolled) scrolledAt = point;
-      else if (scrolledAt && Math.hypot(point.x - scrolledAt.x, point.y - scrolledAt.y) >= REARM_DISTANCE) scrolledAt = null;
-      setDeleting(!track && !scrolledAt && isOutside(point, scrollHost.getBoundingClientRect()));
+      const board = scrollHost.getBoundingClientRect();
+      const boardMoved = boardAt !== null && (board.left !== boardAt.left || board.top !== boardAt.top);
+      boardAt = { left: board.left, top: board.top };
+      if (boardMoved) shiftedAt = point;
+      else if (shiftedAt && Math.hypot(point.x - shiftedAt.x, point.y - shiftedAt.y) >= REARM_DISTANCE) shiftedAt = null;
+      setDeleting(!track && !shiftedAt && isOutside(point, board));
       if (!track) {
         preview?.remove();
         preview = null;
