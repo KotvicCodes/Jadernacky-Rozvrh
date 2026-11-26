@@ -111,6 +111,87 @@ describe('timetable tabs', () => {
   });
 });
 
+describe('closing timetable tabs', () => {
+  let root: HTMLElement;
+  const closeButtons = () => [...root.querySelectorAll<HTMLButtonElement>('.tab-close')];
+  beforeEach(() => {
+    root = setup();
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    vi.stubGlobal('confirm', vi.fn(() => true));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows a labelled × on every tab, outside the tab order', () => {
+    expect(closeButtons().map((b) => b.getAttribute('aria-label'))).toEqual(['Zavřít rozvrh Rozvrh 1', 'Zavřít rozvrh Rozvrh 2', 'Zavřít rozvrh Rozvrh 3']);
+    expect(closeButtons().every((b) => b.tabIndex === -1)).toBe(true);
+    // The tablist still holds only tabs (and the + button) for assistive tech.
+    expect([...root.querySelectorAll('.tab-item')].every((item) => item.getAttribute('role') === 'presentation')).toBe(true);
+  });
+
+  it('asks first, and keeps everything when the answer is no', () => {
+    vi.mocked(confirm).mockReturnValueOnce(false);
+    closeButtons()[0]!.click();
+    expect(confirm).toHaveBeenCalledWith('Opravdu smazat rozvrh „Rozvrh 1“?');
+    expect(loadState().schedules).toHaveLength(3);
+  });
+
+  it('closes an inactive tab without switching away from the active one', () => {
+    const active = loadState().activeId;
+    closeButtons()[0]!.click();
+    expect(loadState().schedules).toHaveLength(2);
+    expect(loadState().activeId).toBe(active);
+    expect(tabs(root).find((t) => t.getAttribute('aria-selected') === 'true')!.dataset.scheduleId).toBe(active);
+  });
+
+  it('switches to a neighbouring tab after closing the active one', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    tabs(root)[1]!.click();
+    closeButtons()[1]!.click();
+    expect(loadState().activeId).toBe(ids[2]);
+    closeButtons()[1]!.click(); // the last tab: falls back to the one before it
+    expect(loadState().activeId).toBe(ids[0]);
+  });
+
+  it('leaves one new empty timetable after closing the last tab', () => {
+    closeButtons()[0]!.click();
+    closeButtons()[0]!.click();
+    closeButtons()[0]!.click();
+    const state = loadState();
+    expect(state.schedules).toHaveLength(1);
+    expect(state.schedules[0]!.lessons).toEqual([]);
+    expect(state.activeId).toBe(state.schedules[0]!.id);
+  });
+
+  it('closes the focused tab with Delete and keeps keyboard focus in the tab bar', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    const tab = tabs(root)[2]!;
+    tab.focus();
+    tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    expect(loadState().schedules.map((s) => s.id)).toEqual(ids.slice(0, 2));
+    expect((document.activeElement as HTMLElement).dataset.scheduleId).toBe(ids[1]);
+    // ⌫ on a Mac keyboard does the same.
+    tabs(root)[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+    expect(loadState().schedules.map((s) => s.id)).toEqual([ids[1]]);
+  });
+
+  it('does not switch, rename or drag the tab when its × is clicked', () => {
+    const active = loadState().activeId;
+    closeButtons()[0]!.dispatchEvent(new MouseEvent('click', { detail: 2, bubbles: true }));
+    expect(root.querySelector('input.tab-input')).toBeNull();
+    expect(loadState().activeId).toBe(active);
+  });
+
+  it('uses the same confirmation and neighbour logic for Smazat rozvrh', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    tabs(root)[1]!.click();
+    root.querySelector<HTMLButtonElement>('.btn-danger')!.click();
+    expect(confirm).toHaveBeenCalledWith('Opravdu smazat rozvrh „Rozvrh 2“?');
+    expect(loadState().schedules.map((s) => s.id)).toEqual([ids[0], ids[2]]);
+    expect(loadState().activeId).toBe(ids[2]);
+  });
+});
+
 describe('lesson edits while the active schedule changes', () => {
   it('saves a lesson into the schedule that opened the dialog', async () => {
     HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };

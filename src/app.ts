@@ -154,11 +154,16 @@ export class App {
           'data-schedule-id': s.id,
           'aria-selected': s.id === active.id ? 'true' : 'false',
           tabindex: s.id === active.id ? 0 : -1,
-          title: `${label} – dvojklikem přejmenuješ, přetažením nebo Alt+šipkou přesuneš`,
-          'aria-keyshortcuts': 'F2 Alt+ArrowLeft Alt+ArrowRight',
+          title: `${label} – dvojklikem přejmenuješ, přetažením nebo Alt+šipkou přesuneš, klávesou Delete zavřeš`,
+          'aria-keyshortcuts': 'F2 Alt+ArrowLeft Alt+ArrowRight Delete',
         },
         label,
       );
+      // A sibling of the tab (buttons cannot nest), shown inside its right edge.
+      // Keyboard users press Delete on the tab instead, so it stays out of the tab order.
+      const close = h('button', { type: 'button', class: 'tab-close', tabindex: -1, 'aria-label': `Zavřít rozvrh ${label}`, title: `Zavřít rozvrh ${label}` }, '×');
+      close.addEventListener('click', () => this.deleteSchedule(s.id));
+      const item = h('div', { class: 'tab-item', role: 'presentation' }, tab, close);
       let targetIndex = i;
       const clearDrag = () => {
         tab.classList.remove('tab--dragging');
@@ -196,6 +201,10 @@ export class App {
         if (e.key === 'F2') {
           e.preventDefault();
           this.renameSchedule(s.id);
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          // ⌫ is the Delete key on a Mac keyboard.
+          e.preventDefault();
+          this.deleteSchedule(s.id);
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           e.preventDefault();
           const list = this.state.schedules;
@@ -210,7 +219,7 @@ export class App {
           this.tabFor(next.id)?.focus();
         }
       });
-      return tab;
+      return item;
     });
 
     const addTab = h('button', { type: 'button', class: 'tab tab-add', title: 'Nový rozvrh', 'aria-label': 'Nový rozvrh' }, '+');
@@ -229,6 +238,27 @@ export class App {
       if (rect.left < host.left) this.tabs.scrollLeft -= host.left - rect.left;
       else if (rect.right > host.right) this.tabs.scrollLeft += rect.right - host.right;
     }
+  }
+
+  /**
+   * Deletes a timetable after confirmation (Smazat rozvrh, the tab's ×, Delete
+   * on a tab). Closing the active one switches to its neighbour; closing the
+   * last one leaves a new empty timetable.
+   */
+  private deleteSchedule(id: string): void {
+    const list = this.state.schedules;
+    const index = list.findIndex((s) => s.id === id);
+    if (index < 0) return;
+    const label = scheduleLabel(list[index]!, index);
+    if (!confirm(`Opravdu smazat rozvrh „${label}“?`)) return;
+    const wasActive = this.active.id === id;
+    const hadTabFocus = this.tabs.contains(document.activeElement);
+    list.splice(index, 1);
+    if (list.length === 0) list.push(createSchedule());
+    if (wasActive) this.state.activeId = list[Math.min(index, list.length - 1)]!.id;
+    this.lastTabClick = { id: '', at: 0 };
+    this.commit(`Rozvrh „${label}“ smazán.`);
+    if (hadTabFocus) this.tabFor(this.active.id)?.focus({ preventScroll: true });
   }
 
   private tabFor(id: string): HTMLElement | undefined {
@@ -289,14 +319,7 @@ export class App {
     groupSelect.addEventListener('change', saveSpec);
 
     const deleteBtn = h('button', { type: 'button', class: 'btn btn-danger' }, 'Smazat rozvrh');
-    deleteBtn.addEventListener('click', () => {
-      const label = scheduleLabel(active, this.state.schedules.indexOf(active));
-      if (!confirm(`Opravdu smazat rozvrh „${label}“?`)) return;
-      this.state.schedules = this.state.schedules.filter((s) => s.id !== active.id);
-      if (this.state.schedules.length === 0) this.state.schedules.push(createSchedule());
-      this.state.activeId = this.state.schedules[0]!.id;
-      this.commit('Rozvrh smazán.');
-    });
+    deleteBtn.addEventListener('click', () => this.deleteSchedule(active.id));
 
     const download = renderMenu('Stáhnout', [
       { label: 'PDF', onSelect: () => void this.runExport('pdf') },

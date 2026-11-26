@@ -71,6 +71,35 @@ body { margin: 0; background: var(--bg); }
   border-bottom: 1px solid var(--bg);
 }
 .tab-add { padding-inline: 0.7rem; font-weight: 600; }
+/* A tab and its close button (×), which sits inside the tab's right padding. */
+.tab-item { position: relative; display: flex; flex: none; align-items: flex-end; }
+.tab-item > .tab { padding-right: 2rem; }
+.tab-close {
+  position: absolute;
+  top: 50%;
+  right: 0.3rem;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.tab-close:hover { color: var(--danger); background: #fee2e2; }
+/* While a tab is renamed, its field takes the tab's place; the × waits. */
+.tab-item:has(.tab-input) .tab-close { display: none; }
+/* A finger needs a bigger target than the 1.4rem × (and room left of it on the tab). */
+@media (pointer: coarse) {
+  .tab-item > .tab { padding-right: 2.6rem; }
+  .tab-close { right: 0.15rem; width: 2rem; height: 2rem; font-size: 1.15rem; }
+}
 .tab[role='tab'] { touch-action: pinch-zoom; -webkit-touch-callout: none; }
 .tab--dragging { opacity: 0.45; }
 .tab--drop-before { box-shadow: inset 3px 0 var(--brand); }
