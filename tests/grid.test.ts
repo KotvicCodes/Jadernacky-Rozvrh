@@ -116,15 +116,44 @@ describe('deleting a lesson by dragging it off the timetable', () => {
     pointer('pointermove', 500, 600);
     expect(grid.querySelector('.drop-preview')).toBeNull();
     expect(el.classList.contains('lesson--deleting')).toBe(true);
-    // The board clips the lesson, so a ghost under the pointer says what happens.
-    const ghost = document.querySelector<HTMLElement>('body > .lesson-ghost')!;
-    expect(ghost.textContent).toBe('Pustit = smazat');
-    expect([ghost.style.left, ghost.style.top, ghost.style.width]).toEqual(['483px', '574px', '113px']);
+    // The copy under the pointer says what letting go does.
+    const float = document.querySelector<HTMLElement>('body > .lesson-float')!;
+    expect(float.classList.contains('lesson-float--deleting')).toBe(true);
+    expect(float.querySelector('.lesson-delete-hint')!.textContent).toBe('Pustit = smazat');
+    expect([float.style.left, float.style.top, float.style.width]).toEqual(['483px', '574px', '113px']);
     pointer('pointerup', 500, 600);
     expect(handlers.onLessonDelete).toHaveBeenCalledWith(lesson);
     expect(handlers.onLessonMove).not.toHaveBeenCalled();
     expect(el.classList.contains('lesson--deleting')).toBe(false);
-    expect(document.querySelector('.lesson-ghost')).toBeNull();
+    expect(document.querySelector('.lesson-float')).toBeNull();
+  });
+
+  it('moves a copy outside the timetable and leaves the lesson itself in place', () => {
+    const { grid, el, pointer } = setup();
+    pointer('pointerdown', 350, 230);
+    pointer('pointermove', 900, 230);
+    // Nothing inside the scrolling timetable moves, so it cannot clip the lesson or grow its scroll width.
+    expect(el.style.transform).toBe('');
+    expect(el.classList.contains('lesson--dragging')).toBe(true);
+    const float = document.querySelector<HTMLElement>('body > .lesson-float')!;
+    expect(grid.contains(float)).toBe(false);
+    expect([float.style.left, float.style.top, float.style.height]).toEqual(['883px', '204px', '64px']);
+    expect(float.getAttribute('aria-hidden')).toBe('true');
+    expect(float.querySelector('.lesson-title')!.textContent).toBe('MAN');
+    expect(float.hasAttribute('data-lesson-id')).toBe(false);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('.lesson-float')).toBeNull();
+    expect(el.classList.contains('lesson--dragging')).toBe(false);
+  });
+
+  it('draws the copy at the zoomed-out size on phones', () => {
+    const { grid, pointer } = setup();
+    grid.querySelector<HTMLElement>('.board')!.style.zoom = '0.5';
+    pointer('pointerdown', 350, 230);
+    pointer('pointermove', 400, 230);
+    const float = document.querySelector<HTMLElement>('body > .lesson-float')!;
+    expect([float.style.width, float.style.height, float.style.transform]).toEqual(['226px', '128px', 'scale(0.5)']);
+    pointer('pointerup', 400, 230);
   });
 
   it('cancels the delete when dragged back over the grid', () => {
@@ -133,7 +162,7 @@ describe('deleting a lesson by dragging it off the timetable', () => {
     pointer('pointermove', 500, 600);
     pointer('pointermove', 500, 300);
     expect(el.classList.contains('lesson--deleting')).toBe(false);
-    expect(document.querySelector('.lesson-ghost')).toBeNull();
+    expect(document.querySelector('.lesson-float')!.classList.contains('lesson-float--deleting')).toBe(false);
     pointer('pointerup', 500, 300);
     expect(handlers.onLessonDelete).not.toHaveBeenCalled();
     expect(handlers.onLessonMove).toHaveBeenCalled();

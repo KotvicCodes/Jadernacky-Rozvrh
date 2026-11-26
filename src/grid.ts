@@ -70,34 +70,29 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   let origin: DragPoint = { x: 0, y: 0 };
   let grab = 0;
   let sourceRect: DOMRect;
-  let tx = 0;
-  let ty = 0;
-  let scale = 1;
   let target: { day: number; start: number } | null = null;
   let preview: HTMLElement | null = null;
   let deleting = false;
-  // The timetable clips what leaves it, so off the board a ghost of the
-  // lesson follows the pointer instead and says what letting go does.
-  const ghost = h('div', { class: 'lesson-ghost', 'aria-hidden': 'true' }, h('span', { class: 'lesson-delete-hint' }, 'Pustit = smazat'));
-  const setDeleting = (point: DragPoint | null) => {
-    deleting = point !== null && Boolean(handlers.onLessonDelete);
+  // The timetable scrolls and clips what leaves it, so the lesson itself stays
+  // put (faded) and a copy outside the timetable follows the pointer. Moving
+  // the lesson inside the scroll box would clip it at the edges and widen the
+  // scrollable area, which made edge auto-scrolling run away.
+  let float: HTMLElement | null = null;
+  const place = (point: DragPoint) => {
+    if (!float) return;
+    float.style.left = `${sourceRect.left + point.x - origin.x}px`;
+    float.style.top = `${sourceRect.top + point.y - origin.y}px`;
+  };
+  const setDeleting = (value: boolean) => {
+    deleting = value && Boolean(handlers.onLessonDelete);
     el.classList.toggle('lesson--deleting', deleting);
-    if (!deleting) {
-      ghost.remove();
-      return;
-    }
-    Object.assign(ghost.style, {
-      left: `${sourceRect.left + point!.x - origin.x}px`,
-      top: `${sourceRect.top + point!.y - origin.y}px`,
-      width: `${sourceRect.width}px`,
-      height: `${sourceRect.height}px`,
-    });
-    if (!ghost.isConnected) document.body.append(ghost);
+    float?.classList.toggle('lesson-float--deleting', deleting);
   };
   const cleanup = () => {
     el.classList.remove('lesson--dragging');
-    el.style.transform = '';
-    setDeleting(null);
+    setDeleting(false);
+    float?.remove();
+    float = null;
     preview?.remove();
     preview = null;
     target = null;
@@ -108,18 +103,28 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
     onStart(point) {
       origin = point;
       sourceRect = el.getBoundingClientRect();
-      scale = Number(scrollHost.querySelector<HTMLElement>('.board')?.style.zoom) || 1;
-      tx = ty = 0;
+      // On phones the board is zoomed out to fit; the copy is drawn the same size.
+      const scale = Number(scrollHost.querySelector<HTMLElement>('.board')?.style.zoom) || 1;
       const rect = el.closest<HTMLElement>('.track')!.getBoundingClientRect();
       grab = Math.max(0, FIRST_HOUR + Math.floor(((point.x - rect.left) / rect.width) * HOUR_COUNT) - lesson.start);
+      float = h(
+        'div',
+        { class: `${el.className} lesson-float`, style: el.getAttribute('style'), 'aria-hidden': 'true' },
+        ...[...el.childNodes].map((node) => node.cloneNode(true)),
+        h('span', { class: 'lesson-delete-hint' }, 'Pustit = smazat'),
+      );
+      Object.assign(float.style, {
+        width: `${sourceRect.width / scale}px`,
+        height: `${sourceRect.height / scale}px`,
+        transform: scale === 1 ? '' : `scale(${scale})`,
+      });
+      place(point);
+      document.body.append(float);
       el.classList.add('lesson--dragging');
     },
     onMove(point) {
-      const current = el.getBoundingClientRect();
-      tx = (point.x - origin.x + sourceRect.left - (current.left - tx * scale)) / scale;
-      ty = (point.y - origin.y + sourceRect.top - (current.top - ty * scale)) / scale;
-      el.style.transform = `translate(${tx}px, ${ty}px)`;
-      // Restrict hit testing to this timetable and ignore the floating lesson.
+      place(point);
+      // Restrict hit testing to the visible part of this timetable.
       const track = [...scrollHost.querySelectorAll<HTMLElement>('.track')].find((track) => {
         const r = track.getBoundingClientRect();
         const visible = scrollHost.getBoundingClientRect();
@@ -127,7 +132,7 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
         return point.x >= Math.max(r.left, visible.left, labelRight) && point.x <= Math.min(r.right, visible.right)
           && point.y >= r.top && point.y < r.bottom;
       });
-      setDeleting(!track && isOutside(point, scrollHost.getBoundingClientRect()) ? point : null);
+      setDeleting(!track && isOutside(point, scrollHost.getBoundingClientRect()));
       if (!track) {
         preview?.remove();
         preview = null;

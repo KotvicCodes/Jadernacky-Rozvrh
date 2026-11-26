@@ -311,24 +311,33 @@ input.corner-input { width: 100%; margin-left: -4px; padding: 2px 4px; font: inh
   background-clip: padding-box;
 }
 .lesson { touch-action: pinch-zoom; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-.lesson--dragging { z-index: 5; opacity: 0.85; pointer-events: none; cursor: grabbing; box-shadow: 0 6px 16px rgb(0 0 0 / 0.3); }
-/* Dragged clearly off the timetable: letting go deletes the lesson. The board
-   clips the lesson itself, so a ghost outside it shows this instead. */
-.lesson--deleting { opacity: 0; }
-.lesson-ghost {
+/* While dragged, the lesson stays in place, faded, and a copy outside the
+   (clipping, scrolling) timetable follows the pointer. */
+.lesson--dragging { opacity: 0.35; pointer-events: none; }
+.lesson.lesson-float {
   position: fixed;
   z-index: 50;
-  display: flex;
-  align-items: center;
+  opacity: 0.92;
+  pointer-events: none;
+  cursor: grabbing;
+  transform-origin: 0 0;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.3);
+  /* Outside .board, so it needs the timetable's font itself. */
+  font-family: Arial, Helvetica, sans-serif;
+}
+.lesson-float .lesson-delete-hint { display: none; }
+/* Dragged clearly off the timetable: letting go deletes the lesson. */
+.lesson--deleting { opacity: 0; }
+.lesson.lesson-float--deleting {
   justify-content: center;
   padding: 0 4px;
-  border: 2px dashed var(--danger);
-  border-radius: 3px;
+  border-style: dashed;
+  border-color: var(--danger);
   background: rgb(254 226 226 / 0.92);
-  box-shadow: 0 6px 16px rgb(0 0 0 / 0.25);
-  pointer-events: none;
 }
-.lesson-delete-hint {
+.lesson-float--deleting > .lesson-title, .lesson-float--deleting > .lesson-meta { display: none; }
+.lesson-float--deleting .lesson-delete-hint {
+  display: block;
   color: var(--danger);
   font: 700 0.75rem/1.1 Arial, Helvetica, sans-serif;
   text-align: center;
