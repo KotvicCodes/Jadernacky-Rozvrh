@@ -116,6 +116,11 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   enablePointerDrag(el, {
     scrollHost,
     scrollPage: true,
+    onPress() {
+      // The timetable may move before the drag starts (the wheel, a layout shift).
+      const board = scrollHost.getBoundingClientRect();
+      boardAt = { left: board.left, top: board.top };
+    },
     onStart(point) {
       origin = point;
       sourceRect = el.getBoundingClientRect();

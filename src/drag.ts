@@ -28,6 +28,8 @@ export function pageAutoScrolls(point: DragPoint): boolean {
 export function enablePointerDrag(el: HTMLElement, options: {
   scrollHost: HTMLElement;
   scrollPage?: boolean;
+  /** A press this drag accepted, before it is known to become a drag. */
+  onPress?(point: DragPoint): void;
   onStart(point: DragPoint): void;
   onMove(point: DragPoint): void;
   onEnd(): void;
@@ -106,6 +108,7 @@ export function enablePointerDrag(el: HTMLElement, options: {
     cancelledPress = false;
     origin = point = { x: e.clientX, y: e.clientY };
     pointerId = e.pointerId;
+    options.onPress?.(origin);
     // Capture immediately: a quick move can leave a small lesson or tab before
     // its first pointermove. Waiting for the threshold loses those drags.
     el.setPointerCapture(e.pointerId);

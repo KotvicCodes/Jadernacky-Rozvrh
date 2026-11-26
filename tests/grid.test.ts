@@ -242,6 +242,17 @@ describe('deleting a lesson by dragging it off the timetable', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
     });
 
+    it('counts a shift between the press and the start of the drag', () => {
+      const { grid, el, handlers, pointer } = setup();
+      pointer('pointerdown', 350, 230);
+      // The wheel scrolls the page while the button is held, before the drag starts.
+      scrollPage(grid, 450);
+      pointer('pointermove', 355, 230); // just past the drag threshold, far below the timetable now
+      expect(el.classList.contains('lesson--deleting')).toBe(false);
+      pointer('pointerup', 355, 230);
+      expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+    });
+
     it('disarms while the page scrolls, even after the pointer was dragged off on purpose', () => {
       const { grid, el, handlers, pointer } = setup();
       pointer('pointerdown', 350, 230);
