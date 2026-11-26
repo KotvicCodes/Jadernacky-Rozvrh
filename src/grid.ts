@@ -1,6 +1,6 @@
 import { DAYS, FIRST_HOUR, HOUR_COUNT, LAST_HOUR, paletteColor } from './config';
 import { h } from './dom';
-import { enablePointerDrag, type DragPoint } from './drag';
+import { enablePointerDrag, pageAutoScrolls, type DragPoint } from './drag';
 import { startInlineEdit } from './inline-edit';
 import { formatHour, layoutDay, type Lesson, type Schedule } from './model';
 import { sourceNames, type ReplacementOption } from './replacements';
@@ -10,6 +10,8 @@ export interface GridHandlers {
   onLessonClick(lesson: Lesson): void;
   /** Called when a lesson is dragged (or moved with Alt+arrows) to a new slot. */
   onLessonMove(lesson: Lesson, day: number, start: number): void;
+  /** Called when a lesson is dropped clearly outside the timetable, or Delete is pressed on it. */
+  onLessonDelete?(lesson: Lesson): void;
   /** Called with the text typed into the timetable's ID (the top-left corner). */
   onSpecIdEdit?(value: string): void;
 }
@@ -20,6 +22,27 @@ export interface GridOverlay {
   options: readonly ReplacementOption[];
   selectedKey: string | null;
   onSelect(key: string): void;
+}
+
+/**
+ * How far (in screen pixels) beyond the timetable's visible box a lesson must
+ * be dropped to delete it. Dragging near the edge only scrolls; between the
+ * two, letting go does nothing.
+ */
+export const DELETE_DISTANCE = 40;
+
+/**
+ * After the timetable moves under the pointer (page auto-scroll, layout shift,
+ * a mobile toolbar appearing), how far in screen pixels the pointer must move
+ * by itself before letting go off the timetable deletes. Larger than the
+ * jitter of a finger or hand held still.
+ */
+export const REARM_DISTANCE = 8;
+
+/** Whether `point` is clearly outside `box`, so a lesson dropped there is deleted. */
+export function isOutside(point: DragPoint, box: { left: number; right: number; top: number; bottom: number }): boolean {
+  return point.x < box.left - DELETE_DISTANCE || point.x > box.right + DELETE_DISTANCE
+    || point.y < box.top - DELETE_DISTANCE || point.y > box.bottom + DELETE_DISTANCE;
 }
 
 const BASE_ROW_HEIGHT = 64;
@@ -51,18 +74,44 @@ export function dropStart(pointerX: number, trackLeft: number, trackWidth: numbe
   return Math.min(LAST_HOUR - duration, Math.max(FIRST_HOUR, hourUnderPointer - grabOffset));
 }
 
+interface Edges { left: number; top: number; right: number; bottom: number }
+const edges = ({ left, top, right, bottom }: Edges): Edges => ({ left, top, right, bottom });
+
 function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scrollHost: HTMLElement): void {
   let origin: DragPoint = { x: 0, y: 0 };
   let grab = 0;
   let sourceRect: DOMRect;
-  let tx = 0;
-  let ty = 0;
-  let scale = 1;
   let target: { day: number; start: number } | null = null;
   let preview: HTMLElement | null = null;
+  let deleting = false;
+  // Only the pointer's own movement may take a lesson off the timetable. While
+  // the drag scrolls the page, nothing is armed. When the timetable has moved
+  // on screen (that scrolling, a layout shift, a mobile toolbar), nothing is
+  // armed until the pointer has then moved REARM_DISTANCE by itself; a delete
+  // armed earlier is dropped too, so the safe outcome wins.
+  let boardAt: Edges | null = null;
+  let shiftedAt: DragPoint | null = null;
+  // The timetable scrolls and clips what leaves it, so the lesson itself stays
+  // put (faded) and a copy outside the timetable follows the pointer. Moving
+  // the lesson inside the scroll box would clip it at the edges and widen the
+  // scrollable area, which made edge auto-scrolling run away.
+  let float: HTMLElement | null = null;
+  const place = (point: DragPoint) => {
+    if (!float) return;
+    float.style.left = `${sourceRect.left + point.x - origin.x}px`;
+    float.style.top = `${sourceRect.top + point.y - origin.y}px`;
+  };
+  const setDeleting = (value: boolean) => {
+    deleting = value && Boolean(handlers.onLessonDelete);
+    el.classList.toggle('lesson--deleting', deleting);
+    float?.classList.toggle('lesson-float--deleting', deleting);
+  };
   const cleanup = () => {
     el.classList.remove('lesson--dragging');
-    el.style.transform = '';
+    setDeleting(false);
+    float?.remove();
+    float = null;
+    boardAt = shiftedAt = null;
     preview?.remove();
     preview = null;
     target = null;
@@ -70,21 +119,36 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   enablePointerDrag(el, {
     scrollHost,
     scrollPage: true,
-    onStart(point) {
+    onPress(point) {
+      // Measured at the press, not when the drag starts: the timetable may move
+      // in between (the wheel, a layout shift), and the copy must keep the grab.
+      boardAt = edges(scrollHost.getBoundingClientRect());
       origin = point;
       sourceRect = el.getBoundingClientRect();
-      scale = Number(scrollHost.querySelector<HTMLElement>('.board')?.style.zoom) || 1;
-      tx = ty = 0;
       const rect = el.closest<HTMLElement>('.track')!.getBoundingClientRect();
       grab = Math.max(0, FIRST_HOUR + Math.floor(((point.x - rect.left) / rect.width) * HOUR_COUNT) - lesson.start);
+    },
+    onStart(point) {
+      // On phones the board is zoomed out to fit; the copy is drawn the same size.
+      const scale = Number(scrollHost.querySelector<HTMLElement>('.board')?.style.zoom) || 1;
+      float = h(
+        'div',
+        { class: `${el.className} lesson-float`, style: el.getAttribute('style'), 'aria-hidden': 'true' },
+        ...[...el.childNodes].map((node) => node.cloneNode(true)),
+        h('span', { class: 'lesson-delete-hint' }, 'Pustit = smazat'),
+      );
+      Object.assign(float.style, {
+        width: `${sourceRect.width / scale}px`,
+        height: `${sourceRect.height / scale}px`,
+        transform: scale === 1 ? '' : `scale(${scale})`,
+      });
+      place(point);
+      document.body.append(float);
       el.classList.add('lesson--dragging');
     },
     onMove(point) {
-      const current = el.getBoundingClientRect();
-      tx = (point.x - origin.x + sourceRect.left - (current.left - tx * scale)) / scale;
-      ty = (point.y - origin.y + sourceRect.top - (current.top - ty * scale)) / scale;
-      el.style.transform = `translate(${tx}px, ${ty}px)`;
-      // Restrict hit testing to this timetable and ignore the floating lesson.
+      place(point);
+      // Restrict hit testing to the visible part of this timetable.
       const track = [...scrollHost.querySelectorAll<HTMLElement>('.track')].find((track) => {
         const r = track.getBoundingClientRect();
         const visible = scrollHost.getBoundingClientRect();
@@ -92,6 +156,16 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
         return point.x >= Math.max(r.left, visible.left, labelRight) && point.x <= Math.min(r.right, visible.right)
           && point.y >= r.top && point.y < r.bottom;
       });
+      const board = scrollHost.getBoundingClientRect();
+      const now = edges(board);
+      // Any edge counts: a resize or a new zoom can move the right or bottom edge alone.
+      const boardMoved = boardAt !== null && (Object.keys(now) as (keyof Edges)[]).some((side) => now[side] !== boardAt![side]);
+      boardAt = now;
+      // Asked directly rather than inferred from the last frame, so a quick move
+      // between two auto-scroll frames cannot re-arm while the page scrolls.
+      if (boardMoved || pageAutoScrolls(point)) shiftedAt = point;
+      else if (shiftedAt && Math.hypot(point.x - shiftedAt.x, point.y - shiftedAt.y) >= REARM_DISTANCE) shiftedAt = null;
+      setDeleting(!track && !shiftedAt && isOutside(point, board));
       if (!track) {
         preview?.remove();
         preview = null;
@@ -108,14 +182,22 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
     },
     onEnd() {
       const moved = target;
+      const remove = deleting;
       cleanup();
-      if (moved && (moved.day !== lesson.day || moved.start !== lesson.start)) handlers.onLessonMove(lesson, moved.day, moved.start);
+      if (remove) handlers.onLessonDelete?.(lesson);
+      else if (moved && (moved.day !== lesson.day || moved.start !== lesson.start)) handlers.onLessonMove(lesson, moved.day, moved.start);
     },
     onCancel: cleanup,
   });
 
-  // Keyboard alternative: Alt+←/→ moves by an hour, Alt+↑/↓ by a day.
+  // Keyboard alternative: Alt+←/→ moves by an hour, Alt+↑/↓ by a day;
+  // Delete (⌫ on a Mac) deletes, like dropping the lesson off the timetable.
   el.addEventListener('keydown', (e) => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !e.altKey && !e.ctrlKey && !e.metaKey && handlers.onLessonDelete) {
+      e.preventDefault();
+      handlers.onLessonDelete(lesson);
+      return;
+    }
     if (!e.altKey) return;
     const moves: Record<string, [number, number]> = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
     const move = moves[e.key];
@@ -150,7 +232,7 @@ function renderLesson(
       class: `lesson${lanes > 1 ? ' lesson--compact' : ''}${state}`,
       'data-lesson-id': lesson.id,
       'aria-label': `Upravit: ${lessonLabel(lesson)}`,
-      'aria-keyshortcuts': 'Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown',
+      'aria-keyshortcuts': `Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown${handlers.onLessonDelete ? ' Delete' : ''}`,
       title: lessonLabel(lesson),
       style: [
         `left:${pct(lesson.start - FIRST_HOUR)}`,

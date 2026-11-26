@@ -71,10 +71,54 @@ body { margin: 0; background: var(--bg); }
   border-bottom: 1px solid var(--bg);
 }
 .tab-add { padding-inline: 0.7rem; font-weight: 600; }
+/* A tab and its close button (×), which sits inside the tab's right padding. */
+.tab-item { position: relative; display: flex; flex: none; align-items: flex-end; }
+.tab-item > .tab { padding-right: 2rem; }
+.tab-close {
+  position: absolute;
+  top: 50%;
+  right: 0.3rem;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.tab-close:hover { color: var(--danger); background: #fee2e2; }
+/* While a tab is renamed, its field takes the tab's place; the × waits. */
+.tab-item:has(.tab-input) .tab-close { display: none; }
+/* A finger needs a bigger target than the 1.4rem × (and room left of it on the tab). */
+@media (pointer: coarse) {
+  .tab-item > .tab { padding-right: 2.6rem; }
+  .tab-close { right: 0.15rem; width: 2rem; height: 2rem; font-size: 1.15rem; }
+}
 .tab[role='tab'] { touch-action: pinch-zoom; -webkit-touch-callout: none; }
-.tab--dragging { opacity: 0.45; }
-.tab--drop-before { box-shadow: inset 3px 0 var(--brand); }
-.tab--drop-after { box-shadow: inset -3px 0 var(--brand); }
+/* Dragging a tab: it follows the pointer, lifted above the others, which
+   slide aside to open the gap where it will land. */
+.tab-item--dragging { z-index: 2; }
+.tab-item--dragging > .tab {
+  color: var(--text);
+  background: var(--bg);
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 10px rgb(15 23 42 / 0.2);
+  cursor: grabbing;
+}
+.tab-item--dragging > .tab[aria-selected='true'] { color: var(--brand); }
+/* Far above or below the bar, letting go puts the tab back. */
+.tab-item--outside > .tab, .tab-item--outside > .tab[aria-selected='true'] { color: var(--muted); border-style: dashed; box-shadow: none; }
+.tab-item--shifting { transition: transform 150ms ease; }
+.tab-item--settling { transition: transform 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .tab-item--shifting, .tab-item--settling { transition: none; }
+}
 /* While renaming, the field looks like the active tab (no focus ring). */
 input.tab-input,
 input.tab-input:focus-visible {
@@ -141,6 +185,21 @@ input.tab-input:focus-visible {
 /* Space between the buttons and the timetable. */
 .board-host { margin-top: 2.25rem; min-width: 0; }
 .status { min-height: 1.2em; color: var(--muted); font-size: 0.85rem; }
+/* The status message and, after a lesson is deleted, "Vrátit" beside it. */
+.status-line { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0.5rem; }
+.status-undo { font-size: 0.85rem; }
+.status-undo:empty { display: none; }
+.status-action {
+  padding: 0.1rem 0.3rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--brand);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.status-action:hover { background: #eef6fc; }
 .site-footer { max-width: 1200px; margin: 0 auto; padding: 0 1rem 1.5rem; font-size: 0.85rem; }
 .site-footer a { color: var(--muted); }
 .site-footer a:hover, .site-footer a:focus-visible { color: var(--brand); }
@@ -191,6 +250,10 @@ input:focus-visible, select:focus-visible, button:focus-visible {
 .board { min-width: 756px; max-width: 936px; padding: 0.5rem 2.25rem 0.75rem 0.5rem; font-family: Arial, Helvetica, sans-serif; }
 .board-head { display: grid; grid-template-columns: var(--label-w) 1fr; height: 32px; align-items: center; }
 .corner { padding-right: 1.25rem; font-weight: 700; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The ID button and its text field clip their own text. They sit 4 px left of
+   the corner (so the text lines up with the day names); clipping the corner
+   too would cut off their left border and their focus ring. */
+.corner:has(> .corner-edit, > .corner-input) { overflow: visible; }
 /* The ID looks like plain text (as on the official timetable) until hovered. */
 .corner-edit {
   max-width: 100%;
@@ -248,7 +311,37 @@ input.corner-input { width: 100%; margin-left: -4px; padding: 2px 4px; font: inh
   background-clip: padding-box;
 }
 .lesson { touch-action: pinch-zoom; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-.lesson--dragging { z-index: 5; opacity: 0.85; pointer-events: none; cursor: grabbing; box-shadow: 0 6px 16px rgb(0 0 0 / 0.3); }
+/* While dragged, the lesson stays in place, faded, and a copy outside the
+   (clipping, scrolling) timetable follows the pointer. */
+.lesson--dragging { opacity: 0.35; pointer-events: none; }
+.lesson.lesson-float {
+  position: fixed;
+  z-index: 50;
+  opacity: 0.92;
+  pointer-events: none;
+  cursor: grabbing;
+  transform-origin: 0 0;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.3);
+  /* Outside .board, so it needs the timetable's font itself. */
+  font-family: Arial, Helvetica, sans-serif;
+}
+.lesson-float .lesson-delete-hint { display: none; }
+/* Dragged clearly off the timetable: letting go deletes the lesson. */
+.lesson--deleting { opacity: 0; }
+.lesson.lesson-float--deleting {
+  justify-content: center;
+  padding: 0 4px;
+  border-style: dashed;
+  border-color: var(--danger);
+  background: rgb(254 226 226 / 0.92);
+}
+.lesson-float--deleting > .lesson-title, .lesson-float--deleting > .lesson-meta { display: none; }
+.lesson-float--deleting .lesson-delete-hint {
+  display: block;
+  color: var(--danger);
+  font: 700 0.75rem/1.1 Arial, Helvetica, sans-serif;
+  text-align: center;
+}
 .drop-preview {
   position: absolute;
   top: 2px;

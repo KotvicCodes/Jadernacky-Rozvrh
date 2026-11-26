@@ -8,7 +8,7 @@ download it as a PDF.
 ## Features
 
 - Timetable grid laid out like the official one: Monday–Friday rows, 8:00–20:00 columns.
-- Click any free hour slot to add a lesson; click a lesson to edit or delete it.
+- Click any free hour slot to add a lesson; click a lesson to edit or delete it. Dragging a lesson clearly off the timetable (or pressing Delete / ⌫ on it) deletes it, with **Vrátit** (or Ctrl+Z / ⌘Z) for a few seconds to undo.
 - Each lesson has a subject, classroom, lecturer, duration and colour.
 - Lessons always start on a whole hour (10:00, 11:00, …) and end by 20:00.
 - Colours follow the official scheme: one colour per department (katedra), labelled with its abbreviation (KM, KF, KHVJ, KIPL, KLFF, KMAT, KJCH, KDAIZ, KJR, KSI).
@@ -16,7 +16,7 @@ download it as a PDF.
 - Click the ID in the timetable's top-left corner to type any ID by hand.
 - Overlapping (parallel) lessons are stacked, as on the official timetable.
 - Drag and drop lessons to another day or hour (snaps to whole hours); Alt + arrow keys do the same from the keyboard. On touch screens, drag from anywhere on a lesson; pinch to zoom for more detail. Dragging near the edges scrolls automatically when needed.
-- Download as **PDF** (A4 landscape) or **PNG**, drawn like the official timetable.
+- Download (Stáhnout → PDF / PNG) as **PDF** (A4 landscape) or **PNG**, drawn like the official timetable.
 - Exports carry the schedule data invisibly (PNG `tEXt` chunk, PDF Info entry), so they can be imported back later.
 - **Import** straight from the FJFI website (Importovat → Z webu FJFI): pick the year (ročník), study program, specialization where offered and, when the program has more than one, the kruh. Timetables are recognized once during deployment; importing downloads a small JSON file without running OCR in the browser. The list is not hardcoded: it is read from rozvrh.fjfi.cvut.cz on every deploy (see [Automatic updates and deployment](#automatic-updates-and-deployment)).
 - **Import** a timetable from a file (Importovat → Ze zařízení), by pasting (Ctrl+V) or by dropping it on the page:
@@ -43,7 +43,7 @@ download it as a PDF.
     If single-line recognition returns no title, OCR retries that crop as a single word. Empty lecturer
     and room fields are not retried. Mixed-case exercise suffix misreads such as `FANA1cY` are normalized.
 - **Nahradit hodinu** (replace a lesson): pick the subject you have to miss (each is listed once; for a subject taught more than once a week you then pick which lesson; language lessons such as `JAZ.2` are not offered), and the app searches every official timetable of every year for the same course code (rooms and lecturers may differ). The results are drawn over your own timetable in a strip under each day: each block shows its teacher and room. Lessons that fall into your free time are highlighted, and ones that clash with your lessons (or with the skipped one) are greyed out. The list above the timetable shows the free options with the timetables they come from, by abbreviation (`JCF2`, `FI_IPL`); the clashing ones are folded underneath. Clicking an option highlights it in both places. Your timetable is not changed. The official timetables are kept in the browser's cache until a deployment publishes new ones.
-- Several schedules (e.g. one per semester) are kept side by side as tabs: click a tab to switch, double-click it (or press F2) to rename it, `+` adds a new one. Drag from anywhere on a tab to reorder it, or press Alt + Left/Right. Tab order and timetables are saved in the browser (`localStorage`).
+- Several schedules (e.g. one per semester) are kept side by side as tabs: click a tab to switch, double-click it (or press F2) to rename it, `+` adds a new one, and its × (or Delete) closes it after a confirmation. Drag from anywhere on a tab to reorder it (it follows the pointer and the other tabs make room; Esc or letting go far from the tab bar puts it back), or press Alt + Left/Right. Tab order and timetables are saved in the browser (`localStorage`).
 - On phones, the complete week fits the screen using the desktop timetable proportions and a narrower weekday column. Pinch to zoom for reading or moving small lessons. Lesson/import dialogs scroll to keep all their fields and buttons reachable.
 
 Built with plain TypeScript and [Vite](https://vite.dev); no UI framework.

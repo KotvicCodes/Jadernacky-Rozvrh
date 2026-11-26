@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app';
+import { downloadPdf, downloadPng } from '../src/export';
 import { loadState } from '../src/storage';
+
+vi.mock('../src/export', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/export')>()),
+  downloadPdf: vi.fn(async () => {}),
+  downloadPng: vi.fn(async () => {}),
+}));
 
 function setup(): HTMLElement {
   localStorage.clear();
@@ -9,6 +16,13 @@ function setup(): HTMLElement {
   document.body.append(root);
   new App(root);
   return root;
+}
+
+function menuFor(root: HTMLElement, label: string) {
+  const button = [...root.querySelectorAll<HTMLButtonElement>('.menu-wrap > .btn')].find((b) => b.textContent === label)!;
+  const menu = button.parentElement!.querySelector<HTMLElement>('.menu')!;
+  const items = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+  return { button, menu, items };
 }
 
 const tabs = (root: HTMLElement) => [...root.querySelectorAll<HTMLButtonElement>('.tab[role="tab"]')];
@@ -97,6 +111,205 @@ describe('timetable tabs', () => {
   });
 });
 
+describe('dragging timetable tabs', () => {
+  let root: HTMLElement;
+  const items = () => [...root.querySelectorAll<HTMLElement>('.tab-item')];
+  const pointer = (el: Element, type: string, x: number, y = 10) => {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+    Object.entries({ pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y }).forEach(([key, value]) => Object.defineProperty(event, key, { value }));
+    el.dispatchEvent(event);
+  };
+  /** Lays the three tabs out 100 px wide with a 4 px gap, in a 20 px high bar. */
+  const layOut = () => {
+    root.querySelector<HTMLElement>('.tabs')!.getBoundingClientRect = () => ({ left: 0, right: 600, top: 0, bottom: 20, width: 600, height: 20 }) as DOMRect;
+    items().forEach((item, i) => {
+      item.getBoundingClientRect = () => {
+        const shift = Number(/translateX\((-?[\d.]+)px\)/.exec(item.style.transform)?.[1] ?? 0);
+        return { left: i * 104 + shift, right: i * 104 + 100 + shift, top: 0, bottom: 20, width: 100, height: 20 } as DOMRect;
+      };
+    });
+  };
+  beforeEach(() => {
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    HTMLElement.prototype.hasPointerCapture = vi.fn(() => true);
+    HTMLElement.prototype.releasePointerCapture = vi.fn();
+    root = setup();
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    root.querySelector<HTMLElement>('.tabs')!.style.columnGap = '4px';
+    layOut();
+  });
+  const capture = { set: HTMLElement.prototype.setPointerCapture, has: HTMLElement.prototype.hasPointerCapture, release: HTMLElement.prototype.releasePointerCapture };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Object.assign(HTMLElement.prototype, { setPointerCapture: capture.set, hasPointerCapture: capture.has, releasePointerCapture: capture.release });
+  });
+
+  it('moves the tab with the pointer and slides the others aside to open a gap', () => {
+    const [first, second, third] = items();
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 80);
+    expect(first!.classList.contains('tab-item--dragging')).toBe(true);
+    expect(first!.style.transform).toBe('translateX(30px)');
+    expect([second!.style.transform, third!.style.transform]).toEqual(['', '']);
+    pointer(tabs(root)[0]!, 'pointermove', 170);
+    expect(first!.style.transform).toBe('translateX(120px)');
+    expect([second!.style.transform, third!.style.transform]).toEqual(['translateX(-104px)', '']);
+  });
+
+  it('saves the new order on release and keeps the active tab', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 400);
+    pointer(tabs(root)[0]!, 'pointerup', 400);
+    expect(loadState().schedules.map((s) => s.id)).toEqual([ids[1], ids[2], ids[0]]);
+    expect(loadState().activeId).toBe(ids[2]);
+    expect(items().every((item) => !item.classList.contains('tab-item--dragging'))).toBe(true);
+  });
+
+  it('puts the tab back on Escape or when released far from the tab bar', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 400);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(items()[1]!.style.transform).toBe('');
+
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 400, 200);
+    expect(items()[1]!.style.transform).toBe('');
+    expect(items()[0]!.classList.contains('tab-item--outside')).toBe(true);
+    pointer(tabs(root)[0]!, 'pointerup', 400, 200);
+    expect(loadState().schedules.map((s) => s.id)).toEqual(ids);
+    expect(items()[0]!.classList.contains('tab-item--dragging')).toBe(false);
+    expect(items()[0]!.classList.contains('tab-item--outside')).toBe(false);
+  });
+
+  it('puts the tab back when released far to the side of the tab bar', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointermove', 900);
+    expect(items()[0]!.classList.contains('tab-item--outside')).toBe(true);
+    pointer(tabs(root)[0]!, 'pointerup', 900);
+    expect(loadState().schedules.map((s) => s.id)).toEqual(ids);
+  });
+
+  it('measures tabs where they are laid out even while a previous drag still animates them', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    // The second tab is still sliding home from a previous drag.
+    items()[1]!.classList.add('tab-item--shifting');
+    items()[1]!.style.transform = 'translateX(-90px)';
+    pointer(tabs(root)[0]!, 'pointerdown', 50, 10);
+    pointer(tabs(root)[0]!, 'pointermove', 50, 18);
+    pointer(tabs(root)[0]!, 'pointerup', 50, 18);
+    expect(loadState().schedules.map((s) => s.id)).toEqual(ids);
+  });
+
+  it('still switches tabs on a click without movement', () => {
+    pointer(tabs(root)[0]!, 'pointerdown', 50);
+    pointer(tabs(root)[0]!, 'pointerup', 50);
+    tabs(root)[0]!.click();
+    expect(tabs(root)[0]!.getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+describe('closing timetable tabs', () => {
+  let root: HTMLElement;
+  const closeButtons = () => [...root.querySelectorAll<HTMLButtonElement>('.tab-close')];
+  beforeEach(() => {
+    root = setup();
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    vi.stubGlobal('confirm', vi.fn(() => true));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows a × with a tooltip on every tab, outside the tab order and the tablist\'s accessibility tree', () => {
+    expect(closeButtons().map((b) => b.title)).toEqual(['Zavřít rozvrh Rozvrh 1', 'Zavřít rozvrh Rozvrh 2', 'Zavřít rozvrh Rozvrh 3']);
+    expect(closeButtons().every((b) => b.tabIndex === -1 && b.getAttribute('aria-hidden') === 'true')).toBe(true);
+    // Assistive tech gets Delete on the tab instead, and the tablist holds only tabs (and +).
+    expect(tabs(root).every((t) => t.getAttribute('aria-keyshortcuts')!.includes('Delete'))).toBe(true);
+    expect([...root.querySelectorAll('.tab-item')].every((item) => item.getAttribute('role') === 'presentation')).toBe(true);
+  });
+
+  it('never takes focus on the hidden ×', () => {
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    closeButtons()[0]!.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+  });
+
+  it('ignores Delete and ⌫ with modifier keys on a tab', () => {
+    for (const mod of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+      tabs(root)[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, ...mod }));
+    }
+    expect(confirm).not.toHaveBeenCalled();
+    expect(loadState().schedules).toHaveLength(3);
+  });
+
+  it('asks first, and keeps everything when the answer is no', () => {
+    vi.mocked(confirm).mockReturnValueOnce(false);
+    closeButtons()[0]!.click();
+    expect(confirm).toHaveBeenCalledWith('Opravdu smazat rozvrh „Rozvrh 1“?');
+    expect(loadState().schedules).toHaveLength(3);
+  });
+
+  it('closes an inactive tab without switching away from the active one', () => {
+    const active = loadState().activeId;
+    closeButtons()[0]!.click();
+    expect(loadState().schedules).toHaveLength(2);
+    expect(loadState().activeId).toBe(active);
+    expect(tabs(root).find((t) => t.getAttribute('aria-selected') === 'true')!.dataset.scheduleId).toBe(active);
+  });
+
+  it('switches to a neighbouring tab after closing the active one', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    tabs(root)[1]!.click();
+    closeButtons()[1]!.click();
+    expect(loadState().activeId).toBe(ids[2]);
+    closeButtons()[1]!.click(); // the last tab: falls back to the one before it
+    expect(loadState().activeId).toBe(ids[0]);
+  });
+
+  it('leaves one new empty timetable after closing the last tab', () => {
+    closeButtons()[0]!.click();
+    closeButtons()[0]!.click();
+    closeButtons()[0]!.click();
+    const state = loadState();
+    expect(state.schedules).toHaveLength(1);
+    expect(state.schedules[0]!.lessons).toEqual([]);
+    expect(state.activeId).toBe(state.schedules[0]!.id);
+  });
+
+  it('closes the focused tab with Delete and keeps keyboard focus in the tab bar', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    const tab = tabs(root)[2]!;
+    tab.focus();
+    tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    expect(loadState().schedules.map((s) => s.id)).toEqual(ids.slice(0, 2));
+    expect((document.activeElement as HTMLElement).dataset.scheduleId).toBe(ids[1]);
+    // ⌫ on a Mac keyboard does the same.
+    tabs(root)[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+    expect(loadState().schedules.map((s) => s.id)).toEqual([ids[1]]);
+  });
+
+  it('does not switch, rename or drag the tab when its × is clicked', () => {
+    const active = loadState().activeId;
+    closeButtons()[0]!.dispatchEvent(new MouseEvent('click', { detail: 2, bubbles: true }));
+    expect(root.querySelector('input.tab-input')).toBeNull();
+    expect(loadState().activeId).toBe(active);
+  });
+
+  it('uses the same confirmation and neighbour logic for Smazat rozvrh', () => {
+    const ids = loadState().schedules.map((s) => s.id);
+    tabs(root)[1]!.click();
+    root.querySelector<HTMLButtonElement>('.btn-danger')!.click();
+    expect(confirm).toHaveBeenCalledWith('Opravdu smazat rozvrh „Rozvrh 2“?');
+    expect(loadState().schedules.map((s) => s.id)).toEqual([ids[0], ids[2]]);
+    expect(loadState().activeId).toBe(ids[2]);
+  });
+});
+
 describe('lesson edits while the active schedule changes', () => {
   it('saves a lesson into the schedule that opened the dialog', async () => {
     HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
@@ -113,6 +326,88 @@ describe('lesson edits while the active schedule changes', () => {
     const state = loadState();
     expect(state.schedules.find((s) => s.id === originalId)!.lessons[0]!.subject).toBe('MAN');
     expect(state.schedules.find((s) => s.id === state.activeId)!.lessons).toEqual([]);
+  });
+});
+
+describe('deleting a lesson without the dialog', () => {
+  afterEach(() => vi.useRealTimers());
+  function withLesson() {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')); };
+    const root = setup();
+    root.querySelector<HTMLButtonElement>('.slot')!.click();
+    document.querySelector<HTMLInputElement>('dialog input[name="subject"]')!.value = 'MAN';
+    document.querySelector<HTMLFormElement>('dialog form')!.requestSubmit();
+    return root;
+  }
+  const lessonEl = (root: HTMLElement) => root.querySelector<HTMLElement>('.lesson');
+  const undoButton = (root: HTMLElement) => [...root.querySelectorAll<HTMLButtonElement>('.status-line button')].find((b) => b.textContent === 'Vrátit');
+
+  it('deletes the focused lesson with Delete and offers Vrátit to bring it back', async () => {
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    const saved = loadState().schedules[0]!.lessons[0]!;
+    lessonEl(root)!.focus();
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    expect(loadState().schedules[0]!.lessons).toEqual([]);
+    expect(lessonEl(root)).toBeNull();
+    expect(root.querySelector('.status')!.textContent).toBe('Smazáno: MAN');
+    expect(undoButton(root)!.getAttribute('aria-keyshortcuts')).toBe('Control+Z Meta+Z');
+    // Focus stays where the lesson was.
+    expect((document.activeElement as HTMLElement).dataset).toMatchObject({ day: String(saved.day), hour: String(saved.start) });
+    undoButton(root)!.click();
+    expect(loadState().schedules[0]!.lessons).toEqual([saved]);
+    expect(root.querySelector('.status')!.textContent).toBe('Vráceno: MAN');
+    expect(document.activeElement).toBe(lessonEl(root));
+  });
+
+  it('removes the Vrátit button after a few seconds', async () => {
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    vi.useFakeTimers();
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+    expect(undoButton(root)).toBeDefined();
+    vi.advanceTimersByTime(8000);
+    expect(undoButton(root)).toBeUndefined();
+    expect(root.querySelector('.status')!.textContent).toBe('Smazáno: MAN');
+  });
+
+  it('drops the Vrátit button with the next edit', async () => {
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    expect(undoButton(root)).toBeUndefined();
+    // Ctrl+Z no longer brings it back either.
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+    expect(loadState().schedules[0]!.lessons).toEqual([]);
+  });
+
+  it('undoes with Ctrl+Z or ⌘Z from wherever focus is, but not while typing', async () => {
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    const saved = loadState().schedules[0]!.lessons[0]!;
+    lessonEl(root)!.focus();
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    const select = root.querySelector<HTMLSelectElement>('.toolbar select')!;
+    select.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+    expect(loadState().schedules[0]!.lessons).toEqual([]);
+    (document.activeElement as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }));
+    expect(loadState().schedules[0]!.lessons).toEqual([saved]);
+    expect(undoButton(root)).toBeUndefined();
+  });
+
+  it('keeps Vrátit when an export finishes in the meantime', async () => {
+    let finish!: () => void;
+    vi.mocked(downloadPng).mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    const root = withLesson();
+    await vi.waitFor(() => expect(lessonEl(root)).not.toBeNull());
+    menuFor(root, 'Stáhnout').button.click();
+    menuFor(root, 'Stáhnout').items[1]!.click();
+    lessonEl(root)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    finish();
+    await vi.waitFor(() => expect(root.querySelector('.status')!.textContent).toBe('PNG staženo.'));
+    expect(undoButton(root)).toBeDefined();
   });
 });
 
@@ -142,7 +437,7 @@ describe('toolbar and header', () => {
   it('has the download, import, replacement and delete buttons in that order, and no add button', () => {
     const root = setup();
     const buttons = [...root.querySelectorAll<HTMLButtonElement>('.toolbar-actions > button, .toolbar-actions > .menu-wrap > .btn')].map((b) => b.textContent);
-    expect(buttons).toEqual(['Stáhnout PNG', 'Stáhnout PDF', 'Importovat', 'Nahradit hodinu', 'Smazat rozvrh']);
+    expect(buttons).toEqual(['Stáhnout', 'Importovat', 'Nahradit hodinu', 'Smazat rozvrh']);
   });
 
   it('shows no subtitle or hint, but credits the author and links bug reports to the repo', () => {
@@ -157,6 +452,75 @@ describe('toolbar and header', () => {
     expect(bug.textContent).toBe('Našel/našla jsi bug? Oprav ho!');
     expect(bug.href).toBe('https://github.com/KotvicCodes/Jadernacky-Rozvrh');
     expect([credit.rel, bug.rel]).toEqual(['noopener', 'noopener']);
+  });
+});
+
+describe('Stáhnout menu', () => {
+  beforeEach(() => vi.mocked(downloadPdf).mockClear() && vi.mocked(downloadPng).mockClear());
+
+  it('keeps focus in the menu when an item is pressed, so Safari does not close it before the click', () => {
+    const root = setup();
+    const { button, menu, items } = menuFor(root, 'Stáhnout');
+    button.click();
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    items[1]!.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+    expect(menu.hidden).toBe(false);
+    // Pressing the menu's own button to close it keeps focus put too, and closing returns focus to it.
+    const pressButton = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    button.dispatchEvent(pressButton);
+    expect(pressButton.defaultPrevented).toBe(true);
+    button.click();
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(button);
+    // While closed, pressing the button behaves normally.
+    const pressClosed = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    button.dispatchEvent(pressClosed);
+    expect(pressClosed.defaultPrevented).toBe(false);
+  });
+
+  it('offers PDF and PNG in one menu that works like Importovat', () => {
+    const root = setup();
+    const { button, menu, items } = menuFor(root, 'Stáhnout');
+    expect(button.getAttribute('aria-haspopup')).toBe('menu');
+    expect(items.map((i) => i.textContent)).toEqual(['PDF', 'PNG']);
+    button.click();
+    expect(menu.hidden).toBe(false);
+    expect(document.activeElement).toBe(items[0]);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(items[1]);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(items[0]);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(button);
+    button.click();
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(menu.hidden).toBe(true);
+  });
+
+  it('downloads the chosen format and keeps the button disabled while the file is prepared', async () => {
+    let finish!: () => void;
+    vi.mocked(downloadPdf).mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    const root = setup();
+    const { button, menu, items } = menuFor(root, 'Stáhnout');
+    button.click();
+    items[0]!.click();
+    expect(menu.hidden).toBe(true);
+    expect(downloadPdf).toHaveBeenCalledOnce();
+    expect(downloadPng).not.toHaveBeenCalled();
+    expect(root.querySelector('.status')!.textContent).toBe('Připravuji soubor…');
+    // Stays disabled across a re-render in the meantime.
+    root.querySelector<HTMLButtonElement>('.tab-add')!.click();
+    expect(menuFor(root, 'Stáhnout').button.disabled).toBe(true);
+    finish();
+    await vi.waitFor(() => expect(root.querySelector('.status')!.textContent).toBe('PDF staženo.'));
+    expect(menuFor(root, 'Stáhnout').button.disabled).toBe(false);
+
+    menuFor(root, 'Stáhnout').button.click();
+    menuFor(root, 'Stáhnout').items[1]!.click();
+    await vi.waitFor(() => expect(root.querySelector('.status')!.textContent).toBe('PNG staženo.'));
+    expect(downloadPng).toHaveBeenCalledOnce();
   });
 });
 
@@ -195,8 +559,7 @@ describe('Importovat menu', () => {
 
   it('offers import from the device and from the FJFI website', () => {
     const root = setup();
-    const button = root.querySelector<HTMLButtonElement>('.menu-wrap > .btn')!;
-    const menu = root.querySelector<HTMLElement>('.menu')!;
+    const { button, menu } = menuFor(root, 'Importovat');
     expect(menu.hidden).toBe(true);
     button.click();
     expect(menu.hidden).toBe(false);
@@ -208,8 +571,10 @@ describe('Importovat menu', () => {
 
   it('closes the import menu when keyboard focus leaves it', () => {
     const root = setup();
-    root.querySelector<HTMLButtonElement>('.menu-wrap > .btn')!.click();
+    const { button, menu } = menuFor(root, 'Importovat');
+    button.click();
+    expect(menu.hidden).toBe(false);
     root.querySelector<HTMLButtonElement>('.btn-danger')!.focus();
-    expect(root.querySelector<HTMLElement>('.menu')!.hidden).toBe(true);
+    expect(menu.hidden).toBe(true);
   });
 });

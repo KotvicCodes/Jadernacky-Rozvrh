@@ -1,14 +1,15 @@
 import { DEFAULT_COLOR_ID, KRUH_OPTIONS, PROGRAMS, canonicalSpecId, formatSpecId, parseSpecId } from './config';
 import { openLessonDialog } from './dialog';
 import { h } from './dom';
-import { enablePointerDrag } from './drag';
 import { downloadPdf, downloadPng } from './export';
 import { openFinderDialog, renderFinderPanel, type FinderSearch } from './finder';
 import { renderGrid, type GridOverlay } from './grid';
 import { startInlineEdit } from './inline-edit';
+import { renderMenu } from './menu';
 import { cleanText, createSchedule, normalizeLesson, scheduleLabel, type Lesson, type LessonDraft, type Schedule } from './model';
 import { findReplacements } from './replacements';
 import { loadState, saveState, type AppState } from './storage';
+import { enableTabDrag } from './tab-drag';
 
 /** Author's GitHub profile (header credit) and this project's repository (bug link). */
 const AUTHOR_URL = 'https://github.com/KotvicCodes';
@@ -21,6 +22,11 @@ export class App {
   private readonly tabs = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Rozvrhy' });
   private readonly toolbar = h('div', { class: 'toolbar' });
   private readonly status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+  /** Holds "Vrátit" after a lesson is deleted; kept apart so progress messages don't clear it. */
+  private readonly undoHost = h('span', { class: 'status-undo' });
+  private pendingUndo: { cancel(): void } | null = null;
+  /** Bumped whenever the user opens or ends a search, so a stale undo cannot revive an old one. */
+  private finderVersion = 0;
   /** Open replacement finder: which timetable it belongs to, what it found, and the highlighted option. */
   private finder: { scheduleId: string; search: FinderSearch; selectedKey: string | null; clashesOpen: boolean; fresh: boolean } | null = null;
   private readonly boardResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.fitBoard());
@@ -41,7 +47,7 @@ export class App {
         this.tabs,
         this.toolbar,
         this.boardHost,
-        this.status,
+        h('div', { class: 'status-line' }, this.status, this.undoHost),
       ),
       h(
         'footer',
@@ -116,16 +122,22 @@ export class App {
     return this.state.schedules.find((s) => s.id === this.state.activeId) ?? this.state.schedules[0]!;
   }
 
-  private commit(message?: string, schedule = this.active): void {
+  /** Saves and re-renders; returns whether the browser kept the change. */
+  private commit(message?: string, schedule = this.active): boolean {
+    // Any further edit ends the chance to undo a deleted lesson.
+    this.pendingUndo?.cancel();
     schedule.updatedAt = Date.now();
     const ok = saveState(this.state);
     this.status.textContent = ok ? (message ?? '') : 'Rozvrh se nepodařilo uložit v prohlížeči (soukromé okno?).';
     this.render();
+    return ok;
   }
 
   /** Last tab click, to spot a double click even if the tab was re-rendered in between. */
   private lastTabClick = { id: '', at: 0 };
-  private closeImportMenu?: () => void;
+  /** Closes the toolbar menus of the previous render, so they stop listening for outside clicks. */
+  private closeMenus: Array<() => void> = [];
+  private exporting = false;
 
   private reorderSchedule(id: string, index: number): void {
     const from = this.state.schedules.findIndex((s) => s.id === id);
@@ -151,32 +163,27 @@ export class App {
           'data-schedule-id': s.id,
           'aria-selected': s.id === active.id ? 'true' : 'false',
           tabindex: s.id === active.id ? 0 : -1,
-          title: `${label} – dvojklikem přejmenuješ, přetažením nebo Alt+šipkou přesuneš`,
-          'aria-keyshortcuts': 'F2 Alt+ArrowLeft Alt+ArrowRight',
+          title: `${label} – dvojklikem přejmenuješ, přetažením nebo Alt+šipkou přesuneš, klávesou Delete zavřeš`,
+          'aria-keyshortcuts': 'F2 Alt+ArrowLeft Alt+ArrowRight Delete',
         },
         label,
       );
-      let targetIndex = i;
-      const clearDrag = () => {
-        tab.classList.remove('tab--dragging');
-        this.tabs.querySelectorAll('.tab--drop-before, .tab--drop-after').forEach((el) => el.classList.remove('tab--drop-before', 'tab--drop-after'));
-      };
-      enablePointerDrag(tab, {
-        scrollHost: this.tabs,
-        onStart: () => { tab.classList.add('tab--dragging'); this.lastTabClick = { id: '', at: 0 }; },
-        onMove: (point) => {
-          const rect = this.tabs.getBoundingClientRect();
-          clearDrag();
-          tab.classList.add('tab--dragging');
-          targetIndex = i;
-          if (point.y < rect.top - 30 || point.y > rect.bottom + 30) return;
-          const others = [...this.tabs.querySelectorAll<HTMLElement>('[data-schedule-id]')].filter((el) => el !== tab);
-          targetIndex = others.filter((el) => { const r = el.getBoundingClientRect(); return point.x > r.left + r.width / 2; }).length;
-          const marker = others[targetIndex] ?? others.at(-1);
-          marker?.classList.add(targetIndex === others.length ? 'tab--drop-after' : 'tab--drop-before');
+      // A sibling of the tab (buttons cannot nest), shown inside its right edge.
+      // Keyboard and screen-reader users press Delete on the tab instead (it is
+      // in the tab's aria-keyshortcuts), so the × stays out of the tab order and
+      // out of the tablist's accessibility tree, which may only hold tabs.
+      const close = h('button', { type: 'button', class: 'tab-close', tabindex: -1, 'aria-hidden': 'true', title: `Zavřít rozvrh ${label}` }, '×');
+      close.addEventListener('mousedown', (e) => e.preventDefault()); // Hidden from assistive tech, so never focused.
+      close.addEventListener('click', () => this.deleteSchedule(s.id));
+      const item = h('div', { class: 'tab-item', role: 'presentation' }, tab, close);
+      enableTabDrag(item, tab, {
+        bar: this.tabs,
+        items: () => [...this.tabs.querySelectorAll<HTMLElement>('.tab-item')],
+        onStart: () => { this.lastTabClick = { id: '', at: 0 }; },
+        onDrop: (target) => {
+          this.reorderSchedule(s.id, target);
+          return this.tabFor(s.id)?.closest<HTMLElement>('.tab-item') ?? undefined;
         },
-        onEnd: () => { clearDrag(); this.reorderSchedule(s.id, targetIndex); },
-        onCancel: clearDrag,
       });
       tab.addEventListener('click', (e) => {
         const now = Date.now();
@@ -193,6 +200,10 @@ export class App {
         if (e.key === 'F2') {
           e.preventDefault();
           this.renameSchedule(s.id);
+        } else if ((e.key === 'Delete' || e.key === 'Backspace') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+          // ⌫ is the Delete key on a Mac keyboard.
+          e.preventDefault();
+          this.deleteSchedule(s.id);
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           e.preventDefault();
           const list = this.state.schedules;
@@ -207,7 +218,7 @@ export class App {
           this.tabFor(next.id)?.focus();
         }
       });
-      return tab;
+      return item;
     });
 
     const addTab = h('button', { type: 'button', class: 'tab tab-add', title: 'Nový rozvrh', 'aria-label': 'Nový rozvrh' }, '+');
@@ -226,6 +237,27 @@ export class App {
       if (rect.left < host.left) this.tabs.scrollLeft -= host.left - rect.left;
       else if (rect.right > host.right) this.tabs.scrollLeft += rect.right - host.right;
     }
+  }
+
+  /**
+   * Deletes a timetable after confirmation (Smazat rozvrh, the tab's ×, Delete
+   * on a tab). Closing the active one switches to its neighbour; closing the
+   * last one leaves a new empty timetable.
+   */
+  private deleteSchedule(id: string): void {
+    const list = this.state.schedules;
+    const index = list.findIndex((s) => s.id === id);
+    if (index < 0) return;
+    const label = scheduleLabel(list[index]!, index);
+    if (!confirm(`Opravdu smazat rozvrh „${label}“?`)) return;
+    const wasActive = this.active.id === id;
+    const hadTabFocus = this.tabs.contains(document.activeElement);
+    list.splice(index, 1);
+    if (list.length === 0) list.push(createSchedule());
+    if (wasActive) this.state.activeId = list[Math.min(index, list.length - 1)]!.id;
+    this.lastTabClick = { id: '', at: 0 };
+    this.commit(`Rozvrh „${label}“ smazán.`);
+    if (hadTabFocus) this.tabFor(this.active.id)?.focus({ preventScroll: true });
   }
 
   private tabFor(id: string): HTMLElement | undefined {
@@ -253,7 +285,7 @@ export class App {
   }
 
   private renderToolbar(): void {
-    this.closeImportMenu?.();
+    this.closeMenus.forEach((close) => close());
     const active = this.active;
 
     // Obor + kruh build the ID shown on the timetable ("JCF1"). An ID that
@@ -286,20 +318,14 @@ export class App {
     groupSelect.addEventListener('change', saveSpec);
 
     const deleteBtn = h('button', { type: 'button', class: 'btn btn-danger' }, 'Smazat rozvrh');
-    deleteBtn.addEventListener('click', () => {
-      const label = scheduleLabel(active, this.state.schedules.indexOf(active));
-      if (!confirm(`Opravdu smazat rozvrh „${label}“?`)) return;
-      this.state.schedules = this.state.schedules.filter((s) => s.id !== active.id);
-      if (this.state.schedules.length === 0) this.state.schedules.push(createSchedule());
-      this.state.activeId = this.state.schedules[0]!.id;
-      this.commit('Rozvrh smazán.');
-    });
+    deleteBtn.addEventListener('click', () => this.deleteSchedule(active.id));
 
-
-    const pdfBtn = h('button', { type: 'button', class: 'btn' }, 'Stáhnout PDF');
-    pdfBtn.addEventListener('click', () => void this.runExport('pdf', pdfBtn));
-    const pngBtn = h('button', { type: 'button', class: 'btn' }, 'Stáhnout PNG');
-    pngBtn.addEventListener('click', () => void this.runExport('png', pngBtn));
+    const download = renderMenu('Stáhnout', [
+      { label: 'PDF', onSelect: () => void this.runExport('pdf') },
+      { label: 'PNG', onSelect: () => void this.runExport('png') },
+    ]);
+    download.button.classList.add('btn-download');
+    download.button.disabled = this.exporting;
 
     const fileInput = h('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true });
     fileInput.addEventListener('change', () => {
@@ -307,7 +333,11 @@ export class App {
       if (file) void this.importFile(file, file.name);
       fileInput.value = '';
     });
-    const importMenu = this.renderImportMenu(() => fileInput.click());
+    const importMenu = renderMenu('Importovat', [
+      { label: 'Ze zařízení', onSelect: () => fileInput.click() },
+      { label: 'Z webu FJFI', onSelect: () => void this.importFromWeb() },
+    ]);
+    this.closeMenus = [download.close, importMenu.close];
     const findBtn = h('button', { type: 'button', class: 'btn btn-find', 'aria-pressed': this.finder ? 'true' : 'false' }, 'Nahradit hodinu');
     findBtn.addEventListener('click', () => void this.openFinder());
 
@@ -320,59 +350,8 @@ export class App {
         h('label', { class: 'toolbar-field' }, h('span', {}, 'Obor'), programSelect),
         h('label', { class: 'toolbar-field toolbar-field--narrow' }, h('span', {}, 'Kruh'), groupSelect),
       ),
-      h('div', { class: 'toolbar-row toolbar-actions' }, pngBtn, pdfBtn, importMenu, fileInput, findBtn, deleteBtn),
+      h('div', { class: 'toolbar-row toolbar-actions' }, download.element, importMenu.element, fileInput, findBtn, deleteBtn),
     );
-  }
-
-  /** "Importovat" opens a small menu: a file from this device, or a timetable straight from the FJFI website. */
-  private renderImportMenu(pickFile: () => void): HTMLElement {
-    const button = h('button', { type: 'button', class: 'btn btn-menu', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, 'Importovat');
-    const fromDevice = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Ze zařízení');
-    const fromWeb = h('button', { type: 'button', class: 'menu-item', role: 'menuitem' }, 'Z webu FJFI');
-    const menu = h('div', { class: 'menu', role: 'menu', hidden: true }, fromDevice, fromWeb);
-    const wrap = h('div', { class: 'menu-wrap' }, button, menu);
-
-    const onOutside = (e: Event) => {
-      if (!wrap.contains(e.target as Node)) close();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        close();
-        button.focus();
-      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        const items = [fromDevice, fromWeb];
-        const i = items.indexOf(document.activeElement as HTMLButtonElement);
-        items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]!.focus();
-      }
-    };
-    const open = () => {
-      menu.hidden = false;
-      button.setAttribute('aria-expanded', 'true');
-      document.addEventListener('pointerdown', onOutside);
-      wrap.addEventListener('keydown', onKey);
-      fromDevice.focus();
-    };
-    const close = () => {
-      menu.hidden = true;
-      button.setAttribute('aria-expanded', 'false');
-      document.removeEventListener('pointerdown', onOutside);
-      wrap.removeEventListener('keydown', onKey);
-    };
-    this.closeImportMenu = close;
-    wrap.addEventListener('focusout', (e) => {
-      if (!wrap.contains(e.relatedTarget as Node | null)) close();
-    });
-    button.addEventListener('click', () => (menu.hidden ? open() : close()));
-    fromDevice.addEventListener('click', () => {
-      close();
-      pickFile();
-    });
-    fromWeb.addEventListener('click', () => {
-      close();
-      void this.importFromWeb();
-    });
-    return wrap;
   }
 
   private async importFromWeb(): Promise<void> {
@@ -407,6 +386,7 @@ export class App {
       const skipped = schedule.lessons.find((l) => l.id === search.skippedId);
       if (!skipped) return;
       this.finder = { scheduleId: schedule.id, search, selectedKey: null, clashesOpen: false, fresh: true };
+      this.finderVersion++;
       const options = findReplacements(schedule.lessons, skipped, search.timetables);
       const free = options.filter((o) => !o.clashes.length).length;
       this.status.textContent = `${skipped.subject}: ${free} z ${options.length} termínů v ostatních rozvrzích máš volno.`;
@@ -420,6 +400,7 @@ export class App {
   private closeFinder(): void {
     if (!this.finder) return;
     this.finder = null;
+    this.finderVersion++;
     this.status.textContent = 'Hledání náhrady ukončeno.';
     this.render();
   }
@@ -485,6 +466,7 @@ export class App {
         onSlotClick: (day, hour) => void this.addLesson(day, hour),
         onLessonClick: (lesson) => void this.editLesson(lesson),
         onLessonMove: (lesson, day, start) => this.moveLesson(lesson, day, start),
+        onLessonDelete: (lesson) => this.deleteLesson(lesson),
         onSpecIdEdit: (value) => {
           this.active.specId = canonicalSpecId(cleanText(value));
           this.commit(this.active.specId ? `ID rozvrhu: ${this.active.specId}` : 'ID rozvrhu smazáno.');
@@ -509,8 +491,69 @@ export class App {
     if (hadFocus) this.boardHost.querySelector<HTMLElement>(`[data-lesson-id="${CSS.escape(lesson.id)}"]`)?.focus();
   }
 
-  private async runExport(kind: 'pdf' | 'png', button: HTMLButtonElement): Promise<void> {
-    button.disabled = true;
+  /**
+   * Deletes a lesson dropped off the timetable (or Delete on it), like the
+   * dialog's Smazat, and offers to undo it for a while: a drag can end
+   * outside by accident.
+   */
+  private deleteLesson(lesson: Lesson): void {
+    const schedule = this.active;
+    const index = schedule.lessons.findIndex((l) => l.id === lesson.id);
+    if (index < 0) return;
+    const hadFocus = document.activeElement?.closest('[data-lesson-id]') !== null;
+    // Deleting the lesson that Nahradit hodinu is replacing ends that search;
+    // keep it so Vrátit can bring it back with the lesson.
+    const finder = this.finder?.scheduleId === schedule.id && this.finder.search.skippedId === lesson.id ? this.finder : null;
+    const finderVersion = this.finderVersion;
+    const [removed] = schedule.lessons.splice(index, 1);
+    const name = removed!.subject || 'Hodina';
+    const saved = this.commit(`Smazáno: ${name}`, schedule);
+    // Keyboard users stay where the lesson was.
+    if (hadFocus) this.boardHost.querySelector<HTMLElement>(`.slot[data-day="${removed!.day}"][data-hour="${removed!.start}"]`)?.focus();
+    if (!saved) return;
+    const undo = h(
+      'button',
+      { type: 'button', class: 'status-action', title: 'Vrátit smazanou hodinu (Ctrl+Z, na Macu ⌘Z)', 'aria-keyshortcuts': 'Control+Z Meta+Z' },
+      'Vrátit',
+    );
+    const restore = () => {
+      cancel();
+      if (!this.state.schedules.includes(schedule) || schedule.lessons.some((l) => l.id === removed!.id)) return;
+      schedule.lessons.splice(Math.min(index, schedule.lessons.length), 0, removed!);
+      // Only if the user has not opened or ended a search since.
+      if (finder && !this.finder && this.finderVersion === finderVersion && this.active === schedule) this.finder = finder;
+      this.commit(`Vráceno: ${name}`, schedule);
+      if (this.active === schedule) [...this.boardHost.querySelectorAll<HTMLElement>('[data-lesson-id]')].find((el) => el.dataset.lessonId === removed!.id)?.focus();
+    };
+    // Ctrl+Z (⌘Z) undoes from anywhere while Vrátit is shown, except where it edits text.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.defaultPrevented) return;
+      if (document.querySelector('dialog[open]') || (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]'))) return;
+      e.preventDefault();
+      restore();
+    };
+    const cancel = () => {
+      clearTimeout(timer);
+      document.removeEventListener('keydown', onKey);
+      undo.remove();
+      if (this.pendingUndo === pending) this.pendingUndo = null;
+    };
+    const pending = { cancel };
+    undo.addEventListener('click', restore);
+    document.addEventListener('keydown', onKey);
+    this.undoHost.replaceChildren(undo);
+    this.pendingUndo = pending;
+    // Expires after a while, or with the next edit (see commit).
+    const timer = setTimeout(cancel, UNDO_MS);
+  }
+
+  /** Stáhnout → PDF / PNG. The Stáhnout button stays disabled until the file is ready. */
+  private async runExport(kind: 'pdf' | 'png'): Promise<void> {
+    if (this.exporting) return;
+    this.exporting = true;
+    const button = () => this.toolbar.querySelector<HTMLButtonElement>('.btn-download');
+    const first = button();
+    if (first) first.disabled = true;
     this.status.textContent = 'Připravuji soubor…';
     try {
       await (kind === 'pdf' ? downloadPdf(this.active) : downloadPng(this.active));
@@ -518,7 +561,14 @@ export class App {
     } catch (err) {
       this.status.textContent = `Export se nepovedl: ${err instanceof Error ? err.message : String(err)}`;
     } finally {
-      button.disabled = false;
+      this.exporting = false;
+      // The toolbar may have been re-rendered in the meantime.
+      const current = button();
+      if (current) {
+        const refocus = current === first && document.activeElement === document.body;
+        current.disabled = false;
+        if (refocus) current.focus();
+      }
     }
   }
 
@@ -545,6 +595,9 @@ export class App {
     }
   }
 }
+
+/** How long a deleted lesson can be brought back with Vrátit. */
+const UNDO_MS = 8000;
 
 /** Value of the Obor option holding an ID that matches no known program. */
 const CUSTOM_SPEC = '__custom__';
