@@ -47,13 +47,9 @@ export function subjectKey(subject: string): string {
   return subject.normalize('NFC').replace(/\s+/g, '').toLowerCase();
 }
 
-/**
- * Whether a lesson can be replaced here. Language lessons (JAZ, JAZ.2,
- * JAZ3cv, …) are left out: they don't work with how lessons are matched.
- */
+/** Whether a lesson can be replaced here: only exercises, whose codes end in "cv" (MAN1cv, ANA3 cv). */
 export function isReplaceable(subject: string): boolean {
-  const key = subjectKey(subject);
-  return key !== '' && !key.startsWith('jaz');
+  return subjectKey(subject).endsWith('cv');
 }
 
 type Slot = Pick<LessonDraft, 'day' | 'start' | 'duration'>;

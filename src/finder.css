@@ -198,7 +198,7 @@
 /* Picker dialog */
 .finder-form .hint, .finder-form .status { margin: 0; }
 .finder-form .hint { font-size: 0.9rem; line-height: 1.45; color: var(--muted); }
-.finder-form .finder-languages { margin-top: -0.35rem; font-size: 0.8rem; }
+.finder-form .finder-others { margin-top: -0.35rem; font-size: 0.8rem; }
 .finder-form .status:empty { display: none; }
 .finder-form .status { font-variant-numeric: tabular-nums; }
 .finder-error { color: var(--danger); }

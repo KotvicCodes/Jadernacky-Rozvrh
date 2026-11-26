@@ -30,7 +30,7 @@ function countLabel(n: number, one: string, few: string, many: string): string {
 
 /**
  * The student's replaceable lessons grouped by course code, each group by
- * time; groups in order of their first lesson. Language lessons are left out.
+ * time; groups in order of their first lesson. Only exercises (…cv) are listed.
  */
 export function groupBySubject(lessons: readonly Lesson[]): Lesson[][] {
   const groups = new Map<string, Lesson[]>();
@@ -56,7 +56,7 @@ export function openFinderDialog(lessons: readonly Lesson[], preselectId?: strin
     const abort = new AbortController();
     let result: FinderSearch | null = null;
     const groups = groupBySubject(lessons);
-    const hasLanguages = lessons.some((l) => l.subject.trim() && !isReplaceable(l.subject));
+    const hasOthers = lessons.some((l) => l.subject.trim() && !isReplaceable(l.subject));
     const preselected = groups.find((g) => g.some((l) => l.id === preselectId));
     let current = preselected ?? groups[0];
 
@@ -126,10 +126,10 @@ export function openFinderDialog(lessons: readonly Lesson[], preselectId?: strin
       h('h2', {}, 'Nahradit hodinu'),
       groups.length
         ? h('p', { class: 'hint' }, 'Vyber předmět, na který nemůžeš přijít. Prohledám rozvrhy všech ročníků a ukážu, kdy se stejný předmět učí v čase, kdy máš volno.')
-        : h('p', { class: 'hint' }, hasLanguages
-          ? 'V tomhle rozvrhu nejsou žádné hodiny, které by šlo nahradit.'
+        : h('p', { class: 'hint' }, hasOthers
+          ? 'V tomhle rozvrhu nejsou žádná cvičení, která by šlo nahradit.'
           : 'V tomhle rozvrhu zatím nejsou žádné hodiny. Přidej je nebo importuj rozvrh z webu FJFI.'),
-      hasLanguages ? h('p', { class: 'hint finder-languages' }, 'Jazyky (JAZ) tu nahradit nejde.') : null,
+      hasOthers ? h('p', { class: 'hint finder-others' }, 'Nahradit jde jen cvičení (kódy končící na cv).') : null,
       groups.length ? subjects : null,
       occurrences,
       status,
