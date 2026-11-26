@@ -189,7 +189,6 @@ export interface FinderPanelProps {
   clashesOpen: boolean;
   onSelect(key: string): void;
   onToggleClashes(open: boolean): void;
-  onChange(): void;
   onClose(): void;
 }
 
@@ -199,8 +198,6 @@ export function renderFinderPanel(props: FinderPanelProps): HTMLElement {
   const free = options.filter((o) => !o.clashes.length);
   const clashing = options.filter((o) => o.clashes.length);
 
-  const changeBtn = h('button', { type: 'button', class: 'btn' }, 'Jiný předmět');
-  changeBtn.addEventListener('click', props.onChange);
   const closeBtn = h('button', { type: 'button', class: 'btn', 'aria-keyshortcuts': 'Escape', title: 'Ukončit hledání (Esc)' }, 'Ukončit');
   closeBtn.addEventListener('click', props.onClose);
 
@@ -215,7 +212,7 @@ export function renderFinderPanel(props: FinderPanelProps): HTMLElement {
       h('span', { class: 'finder-code', style: `--fill:${color.fill};--border:${color.border}` }, skipped.subject),
       h('span', { class: 'finder-when' }, slotLabel(skipped)),
     ),
-    h('div', { class: 'finder-actions' }, changeBtn, closeBtn),
+    h('div', { class: 'finder-actions' }, closeBtn),
   );
 
   // One fact per line, wrapping instead of overlapping or cutting names short.

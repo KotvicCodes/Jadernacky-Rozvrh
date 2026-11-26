@@ -459,7 +459,6 @@ export class App {
       clashesOpen: finder.clashesOpen,
       onSelect: (key) => this.selectOption(key, 'list'),
       onToggleClashes: (open) => { finder.clashesOpen = open; },
-      onChange: () => void this.openFinder(),
       onClose: () => this.closeFinder(),
     });
     return { overlay, panel };
