@@ -229,6 +229,21 @@ describe('Nahradit hodinu while editing the timetable', () => {
     expect(root.querySelector('.finder-panel')).not.toBeNull();
     expect(root.querySelectorAll('.alt').length).toBeGreaterThan(0);
   });
+
+  it('does not bring back a search the user has replaced or ended since', async () => {
+    const root = await openFinder(['h1-a.json', 'h2-a.json', 'h3-a.json']);
+    root.querySelector<HTMLElement>('[data-lesson-id="cv"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    // A new search for the other lesson, then ended with Escape.
+    [...root.querySelectorAll<HTMLButtonElement>('.toolbar button')].find((b) => b.textContent === 'Nahradit hodinu')!.click();
+    await vi.waitFor(() => expect(document.querySelector('dialog .finder-choices')).not.toBeNull());
+    document.querySelector<HTMLFormElement>('dialog form')!.requestSubmit();
+    await vi.waitFor(() => expect(root.querySelector('.finder-panel')).not.toBeNull());
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(root.querySelector('.finder-panel')).toBeNull();
+    [...root.querySelectorAll<HTMLButtonElement>('.status-line button')].find((b) => b.textContent === 'Vrátit')!.click();
+    expect(root.querySelector('[data-lesson-id="cv"]')).not.toBeNull();
+    expect(root.querySelector('.finder-panel')).toBeNull();
+  });
 });
 
 describe('Nahradit hodinu dialog', () => {

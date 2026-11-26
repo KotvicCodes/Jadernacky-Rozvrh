@@ -69,6 +69,15 @@ describe('pointer dragging', () => {
     expect(seen).toEqual([true]);
   });
 
+  it('leaves Escape alone while the pointer is only pressed, not dragging', () => {
+    pointer(button, 'pointerdown');
+    pointer(button, 'pointermove', { clientX: 52 });
+    const key = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    document.body.dispatchEvent(key);
+    expect(key.defaultPrevented).toBe(false);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
   it('ignores secondary pointers and cancels on Escape', () => {
     pointer(button, 'pointerdown', { isPrimary: false });
     expect(button.setPointerCapture).not.toHaveBeenCalled();

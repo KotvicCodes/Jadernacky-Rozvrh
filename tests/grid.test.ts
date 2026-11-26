@@ -180,14 +180,30 @@ describe('deleting a lesson by dragging it off the timetable', () => {
     expect(handlers.onLessonMove).not.toHaveBeenCalled();
   });
 
-  it('never deletes at the window\'s top or bottom edge, where dragging scrolls the page', () => {
+  it('never deletes at the window\'s bottom edge while the page can still scroll down', () => {
+    const page = document.documentElement;
+    Object.defineProperty(page, 'scrollHeight', { configurable: true, value: 2000 });
+    try {
+      const { el, handlers, pointer } = setup();
+      pointer('pointerdown', 350, 230);
+      // Far below the timetable, but inside the bottom auto-scroll zone of the 768 px window.
+      pointer('pointermove', 500, window.innerHeight - 10);
+      expect(el.classList.contains('lesson--deleting')).toBe(false);
+      pointer('pointerup', 500, window.innerHeight - 10);
+      expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+    } finally {
+      delete (page as unknown as Record<string, unknown>).scrollHeight;
+    }
+  });
+
+  it('does delete at the window\'s edge once the page cannot scroll that way', () => {
     const { el, handlers, pointer } = setup();
+    // jsdom's page is not scrollable, like a page already scrolled to its end.
     pointer('pointerdown', 350, 230);
-    // Far below the timetable, but inside the bottom auto-scroll zone of the 768 px window.
     pointer('pointermove', 500, window.innerHeight - 10);
-    expect(el.classList.contains('lesson--deleting')).toBe(false);
+    expect(el.classList.contains('lesson--deleting')).toBe(true);
     pointer('pointerup', 500, window.innerHeight - 10);
-    expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+    expect(handlers.onLessonDelete).toHaveBeenCalled();
   });
 
   it('deletes with Delete or Backspace on a focused lesson', () => {

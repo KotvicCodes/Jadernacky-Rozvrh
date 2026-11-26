@@ -233,6 +233,12 @@ describe('closing timetable tabs', () => {
     expect([...root.querySelectorAll('.tab-item')].every((item) => item.getAttribute('role') === 'presentation')).toBe(true);
   });
 
+  it('never takes focus on the hidden ×', () => {
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    closeButtons()[0]!.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+  });
+
   it('ignores Delete and ⌫ with modifier keys on a tab', () => {
     for (const mod of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
       tabs(root)[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, ...mod }));
@@ -460,6 +466,13 @@ describe('Stáhnout menu', () => {
     items[1]!.dispatchEvent(press);
     expect(press.defaultPrevented).toBe(true);
     expect(menu.hidden).toBe(false);
+    // Pressing the menu's own button to close it keeps focus put too, and closing returns focus to it.
+    const pressButton = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    button.dispatchEvent(pressButton);
+    expect(pressButton.defaultPrevented).toBe(true);
+    button.click();
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(button);
   });
 
   it('offers PDF and PNG in one menu that works like Importovat', () => {

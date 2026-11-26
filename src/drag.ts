@@ -39,7 +39,8 @@ export function enablePointerDrag(el: HTMLElement, options: {
     }
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
+    // A mere press (no drag yet) leaves Escape to the page.
+    if (e.key === 'Escape' && dragging) {
       e.preventDefault();
       stop(true);
     }

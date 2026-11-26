@@ -26,6 +26,8 @@ export class App {
   private readonly undoHost = h('span', { class: 'status-undo' });
   private pendingUndo: { cancel(): void } | null = null;
   /** Open replacement finder: which timetable it belongs to, what it found, and the highlighted option. */
+  /** Bumped whenever the user opens or ends a search, so a stale undo cannot revive an old one. */
+  private finderVersion = 0;
   private finder: { scheduleId: string; search: FinderSearch; selectedKey: string | null; clashesOpen: boolean; fresh: boolean } | null = null;
   private readonly boardResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.fitBoard());
 
@@ -171,6 +173,7 @@ export class App {
       // in the tab's aria-keyshortcuts), so the × stays out of the tab order and
       // out of the tablist's accessibility tree, which may only hold tabs.
       const close = h('button', { type: 'button', class: 'tab-close', tabindex: -1, 'aria-hidden': 'true', title: `Zavřít rozvrh ${label}` }, '×');
+      close.addEventListener('mousedown', (e) => e.preventDefault()); // Hidden from assistive tech, so never focused.
       close.addEventListener('click', () => this.deleteSchedule(s.id));
       const item = h('div', { class: 'tab-item', role: 'presentation' }, tab, close);
       enableTabDrag(item, tab, {
@@ -383,6 +386,7 @@ export class App {
       const skipped = schedule.lessons.find((l) => l.id === search.skippedId);
       if (!skipped) return;
       this.finder = { scheduleId: schedule.id, search, selectedKey: null, clashesOpen: false, fresh: true };
+      this.finderVersion++;
       const options = findReplacements(schedule.lessons, skipped, search.timetables);
       const free = options.filter((o) => !o.clashes.length).length;
       this.status.textContent = `${skipped.subject}: ${free} z ${options.length} termínů v ostatních rozvrzích máš volno.`;
@@ -396,6 +400,7 @@ export class App {
   private closeFinder(): void {
     if (!this.finder) return;
     this.finder = null;
+    this.finderVersion++;
     this.status.textContent = 'Hledání náhrady ukončeno.';
     this.render();
   }
@@ -499,6 +504,7 @@ export class App {
     // Deleting the lesson that Nahradit hodinu is replacing ends that search;
     // keep it so Vrátit can bring it back with the lesson.
     const finder = this.finder?.scheduleId === schedule.id && this.finder.search.skippedId === lesson.id ? this.finder : null;
+    const finderVersion = this.finderVersion;
     const [removed] = schedule.lessons.splice(index, 1);
     const name = removed!.subject || 'Hodina';
     const saved = this.commit(`Smazáno: ${name}`, schedule);
@@ -514,7 +520,8 @@ export class App {
       cancel();
       if (!this.state.schedules.includes(schedule) || schedule.lessons.some((l) => l.id === removed!.id)) return;
       schedule.lessons.splice(Math.min(index, schedule.lessons.length), 0, removed!);
-      if (finder && !this.finder && this.active === schedule) this.finder = finder;
+      // Only if the user has not opened or ended a search since.
+      if (finder && !this.finder && this.finderVersion === finderVersion && this.active === schedule) this.finder = finder;
       this.commit(`Vráceno: ${name}`, schedule);
       if (this.active === schedule) [...this.boardHost.querySelectorAll<HTMLElement>('[data-lesson-id]')].find((el) => el.dataset.lessonId === removed!.id)?.focus();
     };

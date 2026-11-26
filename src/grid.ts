@@ -134,8 +134,11 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
       });
       // At the window's top or bottom edge the page auto-scrolls under a still
       // pointer, which can leave the timetable far from it without the user
-      // dragging away; that zone only scrolls, it never deletes.
-      const pageScrolls = point.y < AUTO_SCROLL_EDGE || point.y > window.innerHeight - AUTO_SCROLL_EDGE;
+      // dragging away; while the page can still scroll that way, that zone only
+      // scrolls and never deletes.
+      const page = document.documentElement;
+      const pageScrolls = (point.y < AUTO_SCROLL_EDGE && window.scrollY > 0)
+        || (point.y > window.innerHeight - AUTO_SCROLL_EDGE && window.scrollY + window.innerHeight < page.scrollHeight - 1);
       setDeleting(!track && !pageScrolls && isOutside(point, scrollHost.getBoundingClientRect()));
       if (!track) {
         preview?.remove();

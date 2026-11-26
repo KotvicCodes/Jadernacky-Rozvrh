@@ -50,12 +50,20 @@ export function renderMenu(label: string, items: readonly MenuItem[]): Menu {
     wrap.removeEventListener('keydown', onKey);
   };
   // Safari (and Firefox on macOS) don't focus a button on click, so pressing an
-  // item would blur the focused one and close the menu before the click lands.
-  menu.addEventListener('mousedown', (e) => e.preventDefault());
+  // item, or the button to close the menu, would blur the focused item and
+  // close the menu before the click lands (which then reopened it).
+  wrap.addEventListener('mousedown', (e) => e.preventDefault());
   wrap.addEventListener('focusout', (e) => {
     if (!wrap.contains(e.relatedTarget as Node | null)) close();
   });
-  button.addEventListener('click', () => (menu.hidden ? open() : close()));
+  button.addEventListener('click', () => {
+    if (menu.hidden) {
+      open();
+    } else {
+      close();
+      button.focus();
+    }
+  });
   entries.forEach((entry, i) => entry.addEventListener('click', () => {
     close();
     // The item is about to be hidden; keep keyboard focus on the menu's button.
