@@ -1,4 +1,7 @@
 /** Whole-surface pointer dragging shared by lessons and schedule tabs. */
+
+/** Width of the zone at a scroll area's (or the window's) edge where dragging scrolls it. */
+export const AUTO_SCROLL_EDGE = 36;
 export interface DragPoint { x: number; y: number }
 
 export function enablePointerDrag(el: HTMLElement, options: {
@@ -23,7 +26,7 @@ export function enablePointerDrag(el: HTMLElement, options: {
     pointerId = null;
     dragging = false;
     cancelAnimationFrame(frame);
-    document.removeEventListener('keydown', onKey);
+    document.removeEventListener('keydown', onKey, true);
     document.removeEventListener('pointerdown', onExtraPointer);
     if (capturedId !== null && el.hasPointerCapture(capturedId)) el.releasePointerCapture(capturedId);
     if (wasDragging) {
@@ -45,7 +48,7 @@ export function enablePointerDrag(el: HTMLElement, options: {
     if (!e.isPrimary) stop(true);
   };
   const edgeSpeed = (value: number, min: number, max: number) => {
-    const edge = Math.min(36, (max - min) / 4);
+    const edge = Math.min(AUTO_SCROLL_EDGE, (max - min) / 4);
     if (value < min || value > max) return 0;
     if (value < min + edge) return -10 * (1 - (value - min) / edge);
     if (value > max - edge) return 10 * (1 - (max - value) / edge);
@@ -74,7 +77,9 @@ export function enablePointerDrag(el: HTMLElement, options: {
     // Capture immediately: a quick move can leave a small lesson or tab before
     // its first pointermove. Waiting for the threshold loses those drags.
     el.setPointerCapture(e.pointerId);
-    document.addEventListener('keydown', onKey);
+    // Capture phase: Escape cancels the drag before page-level Escape handlers
+    // (such as closing Nahradit hodinu) see it; they skip defaultPrevented keys.
+    document.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', onExtraPointer);
   });
   el.addEventListener('pointermove', (e) => {

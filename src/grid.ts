@@ -1,6 +1,6 @@
 import { DAYS, FIRST_HOUR, HOUR_COUNT, LAST_HOUR, paletteColor } from './config';
 import { h } from './dom';
-import { enablePointerDrag, type DragPoint } from './drag';
+import { AUTO_SCROLL_EDGE, enablePointerDrag, type DragPoint } from './drag';
 import { startInlineEdit } from './inline-edit';
 import { formatHour, layoutDay, type Lesson, type Schedule } from './model';
 import { sourceNames, type ReplacementOption } from './replacements';
@@ -132,7 +132,11 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
         return point.x >= Math.max(r.left, visible.left, labelRight) && point.x <= Math.min(r.right, visible.right)
           && point.y >= r.top && point.y < r.bottom;
       });
-      setDeleting(!track && isOutside(point, scrollHost.getBoundingClientRect()));
+      // At the window's top or bottom edge the page auto-scrolls under a still
+      // pointer, which can leave the timetable far from it without the user
+      // dragging away; that zone only scrolls, it never deletes.
+      const pageScrolls = point.y < AUTO_SCROLL_EDGE || point.y > window.innerHeight - AUTO_SCROLL_EDGE;
+      setDeleting(!track && !pageScrolls && isOutside(point, scrollHost.getBoundingClientRect()));
       if (!track) {
         preview?.remove();
         preview = null;

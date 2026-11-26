@@ -180,6 +180,16 @@ describe('deleting a lesson by dragging it off the timetable', () => {
     expect(handlers.onLessonMove).not.toHaveBeenCalled();
   });
 
+  it('never deletes at the window\'s top or bottom edge, where dragging scrolls the page', () => {
+    const { el, handlers, pointer } = setup();
+    pointer('pointerdown', 350, 230);
+    // Far below the timetable, but inside the bottom auto-scroll zone of the 768 px window.
+    pointer('pointermove', 500, window.innerHeight - 10);
+    expect(el.classList.contains('lesson--deleting')).toBe(false);
+    pointer('pointerup', 500, window.innerHeight - 10);
+    expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+  });
+
   it('deletes with Delete or Backspace on a focused lesson', () => {
     const { el, lesson, handlers } = setup();
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }));

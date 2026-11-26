@@ -57,6 +57,18 @@ describe('pointer dragging', () => {
     expect(onEnd).toHaveBeenCalledOnce();
   });
 
+  it('handles Escape before page-level Escape handlers, and marks it handled', () => {
+    const seen: boolean[] = [];
+    const pageHandler = (e: KeyboardEvent) => seen.push(e.defaultPrevented);
+    document.addEventListener('keydown', pageHandler); // registered before the drag starts
+    pointer(button, 'pointerdown');
+    pointer(button, 'pointermove', { clientX: 100 });
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    document.removeEventListener('keydown', pageHandler);
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(seen).toEqual([true]);
+  });
+
   it('ignores secondary pointers and cancels on Escape', () => {
     pointer(button, 'pointerdown', { isPrimary: false });
     expect(button.setPointerCapture).not.toHaveBeenCalled();
