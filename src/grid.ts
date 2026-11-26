@@ -74,6 +74,9 @@ export function dropStart(pointerX: number, trackLeft: number, trackWidth: numbe
   return Math.min(LAST_HOUR - duration, Math.max(FIRST_HOUR, hourUnderPointer - grabOffset));
 }
 
+interface Edges { left: number; top: number; right: number; bottom: number }
+const edges = ({ left, top, right, bottom }: Edges): Edges => ({ left, top, right, bottom });
+
 function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scrollHost: HTMLElement): void {
   let origin: DragPoint = { x: 0, y: 0 };
   let grab = 0;
@@ -86,7 +89,7 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   // on screen (that scrolling, a layout shift, a mobile toolbar), nothing is
   // armed until the pointer has then moved REARM_DISTANCE by itself; a delete
   // armed earlier is dropped too, so the safe outcome wins.
-  let boardAt: { left: number; top: number } | null = null;
+  let boardAt: Edges | null = null;
   let shiftedAt: DragPoint | null = null;
   // The timetable scrolls and clips what leaves it, so the lesson itself stays
   // put (faded) and a copy outside the timetable follows the pointer. Moving
@@ -116,18 +119,18 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
   enablePointerDrag(el, {
     scrollHost,
     scrollPage: true,
-    onPress() {
-      // The timetable may move before the drag starts (the wheel, a layout shift).
-      const board = scrollHost.getBoundingClientRect();
-      boardAt = { left: board.left, top: board.top };
-    },
-    onStart(point) {
+    onPress(point) {
+      // Measured at the press, not when the drag starts: the timetable may move
+      // in between (the wheel, a layout shift), and the copy must keep the grab.
+      boardAt = edges(scrollHost.getBoundingClientRect());
       origin = point;
       sourceRect = el.getBoundingClientRect();
-      // On phones the board is zoomed out to fit; the copy is drawn the same size.
-      const scale = Number(scrollHost.querySelector<HTMLElement>('.board')?.style.zoom) || 1;
       const rect = el.closest<HTMLElement>('.track')!.getBoundingClientRect();
       grab = Math.max(0, FIRST_HOUR + Math.floor(((point.x - rect.left) / rect.width) * HOUR_COUNT) - lesson.start);
+    },
+    onStart(point) {
+      // On phones the board is zoomed out to fit; the copy is drawn the same size.
+      const scale = Number(scrollHost.querySelector<HTMLElement>('.board')?.style.zoom) || 1;
       float = h(
         'div',
         { class: `${el.className} lesson-float`, style: el.getAttribute('style'), 'aria-hidden': 'true' },
@@ -154,8 +157,10 @@ function enableDrag(el: HTMLElement, lesson: Lesson, handlers: GridHandlers, scr
           && point.y >= r.top && point.y < r.bottom;
       });
       const board = scrollHost.getBoundingClientRect();
-      const boardMoved = boardAt !== null && (board.left !== boardAt.left || board.top !== boardAt.top);
-      boardAt = { left: board.left, top: board.top };
+      const now = edges(board);
+      // Any edge counts: a resize or a new zoom can move the right or bottom edge alone.
+      const boardMoved = boardAt !== null && (Object.keys(now) as (keyof Edges)[]).some((side) => now[side] !== boardAt![side]);
+      boardAt = now;
       // Asked directly rather than inferred from the last frame, so a quick move
       // between two auto-scroll frames cannot re-arm while the page scrolls.
       if (boardMoved || pageAutoScrolls(point)) shiftedAt = point;

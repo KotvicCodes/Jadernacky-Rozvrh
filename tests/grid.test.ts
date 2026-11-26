@@ -253,6 +253,29 @@ describe('deleting a lesson by dragging it off the timetable', () => {
       expect(handlers.onLessonDelete).not.toHaveBeenCalled();
     });
 
+    it('counts a move of the right or bottom edge alone, as when the window is resized', () => {
+      const { grid, el, handlers, pointer } = setup();
+      pointer('pointerdown', 350, 230);
+      // The left and top edges stay put; the timetable narrows to end at x = 300.
+      grid.getBoundingClientRect = () => ({ ...box, right: 300, width: 200, height: 400 }) as DOMRect;
+      pointer('pointermove', 355, 230);
+      expect(el.classList.contains('lesson--deleting')).toBe(false);
+      pointer('pointerup', 355, 230);
+      expect(handlers.onLessonDelete).not.toHaveBeenCalled();
+    });
+
+    it('keeps the copy where the lesson was grabbed when the page scrolls before the drag starts', () => {
+      const { grid, el, pointer } = setup();
+      pointer('pointerdown', 350, 230);
+      scrollPage(grid, 100);
+      el.getBoundingClientRect = () => ({ left: 333, right: 446, top: 104, bottom: 168, width: 113, height: 64 }) as DOMRect;
+      pointer('pointermove', 355, 230);
+      const float = document.querySelector<HTMLElement>('body > .lesson-float')!;
+      // Still under the pointer at the grabbed spot, not 100 px above it.
+      expect([float.style.left, float.style.top]).toEqual(['338px', '204px']);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
     it('disarms while the page scrolls, even after the pointer was dragged off on purpose', () => {
       const { grid, el, handlers, pointer } = setup();
       pointer('pointerdown', 350, 230);
