@@ -240,7 +240,7 @@ export class App {
   }
 
   /**
-   * Deletes a timetable after confirmation (Smazat rozvrh, the tab's ×, Delete
+   * Deletes a timetable after confirmation (the tab's ×, Delete
    * on a tab). Closing the active one switches to its neighbour; closing the
    * last one leaves a new empty timetable.
    */
@@ -317,9 +317,6 @@ export class App {
     programSelect.addEventListener('change', saveSpec);
     groupSelect.addEventListener('change', saveSpec);
 
-    const deleteBtn = h('button', { type: 'button', class: 'btn btn-danger' }, 'Smazat rozvrh');
-    deleteBtn.addEventListener('click', () => this.deleteSchedule(active.id));
-
     const download = renderMenu('Stáhnout', [
       { label: 'PDF', onSelect: () => void this.runExport('pdf') },
       { label: 'PNG', onSelect: () => void this.runExport('png') },
@@ -350,7 +347,7 @@ export class App {
         h('label', { class: 'toolbar-field' }, h('span', {}, 'Obor'), programSelect),
         h('label', { class: 'toolbar-field toolbar-field--narrow' }, h('span', {}, 'Kruh'), groupSelect),
       ),
-      h('div', { class: 'toolbar-row toolbar-actions' }, download.element, importMenu.element, fileInput, findBtn, deleteBtn),
+      h('div', { class: 'toolbar-row toolbar-actions' }, download.element, importMenu.element, fileInput, findBtn),
     );
   }
 
