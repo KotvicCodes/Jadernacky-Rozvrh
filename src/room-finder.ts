@@ -9,7 +9,7 @@ import { h } from './dom';
 import { slotLabel } from './finder';
 import { formatHour, maxDuration, startHours, type Lesson } from './model';
 import type { CatalogTimetable } from './replacements';
-import { capacityLabel, findFreeRooms, groupByBuilding, ownClashes, type KnownRoom } from './rooms';
+import { capacityLabel, findFreeRooms, groupByBuilding, ownClashes, roomDescription, type KnownRoom } from './rooms';
 import './finder.css';
 import './room-finder.css';
 
@@ -50,7 +50,7 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
       'li',
       { class: 'rooms-item', 'data-room': room.code },
       h('span', { class: 'rooms-code' }, room.code),
-      h('span', { class: 'rooms-line' }, room.description),
+      h('span', { class: 'rooms-line' }, roomDescription(room)),
       room.capacity ? h('span', { class: 'rooms-line rooms-meta' }, capacityLabel(room.capacity)) : null,
     );
 

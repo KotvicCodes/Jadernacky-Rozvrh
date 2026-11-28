@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app';
 import { normalizeLesson, type Lesson, type LessonDraft } from '../src/model';
 import type { CatalogTimetable } from '../src/replacements';
-import { FINDER_ROOMS, capacityLabel, findFreeRooms, groupByBuilding, ownClashes, roomKey, type KnownRoom } from '../src/rooms';
+import { FINDER_ROOMS, capacityLabel, findFreeRooms, groupByBuilding, ownClashes, roomDescription, roomKey, type KnownRoom } from '../src/rooms';
 import { loadState, saveState } from '../src/storage';
 
 const draft = (day: number, start: number, duration: number, subject: string, room = '', lecturer = ''): LessonDraft =>
@@ -65,6 +65,19 @@ describe('room helpers', () => {
       ['Trojanova', ['T-201', 'T-209']],
       ['Břehová', ['B-103', 'B-115']],
     ]);
+  });
+
+  it('drops the room number a description repeats from the code, and keeps other numbers', () => {
+    const text = (code: string, description: string) => roomDescription({ code, description });
+    expect(text('B-114', 'učebna 114')).toBe('učebna');
+    expect(text('B-10', 'učebna 010')).toBe('učebna');
+    expect(text('B-009', 'počítačová učebna 009')).toBe('počítačová učebna');
+    expect(text('B-115', 'Aula reserva (učebna 115)')).toBe('Aula reserva');
+    expect(text('B-103', 'Aula maxima (velká posluchárna)')).toBe('Aula maxima (velká posluchárna)');
+    expect(text('KMAT-L', 'laboratoř zkoušení kovů KMAT, T-023')).toBe('laboratoř zkoušení kovů KMAT, T-023');
+    expect(text('T-209', 'učebna 210')).toBe('učebna 210');
+    // A description that is only the number stays as published.
+    expect(text('T-014', '014')).toBe('014');
   });
 
   it('finds the own lessons at that time', () => {

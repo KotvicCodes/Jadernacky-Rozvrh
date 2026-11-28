@@ -92,6 +92,22 @@ export function ownClashes(own: readonly Lesson[], slot: Slot): Lesson[] {
   return own.filter((lesson) => overlaps(lesson, slot));
 }
 
+/**
+ * The published description without the room number it repeats from the
+ * code: "učebna 114" for B-114 becomes "učebna", "Aula reserva (učebna 115)"
+ * for B-115 becomes "Aula reserva". Other numbers ("…, T-023") stay.
+ */
+export function roomDescription(room: Pick<KnownRoom, 'code' | 'description'>): string {
+  const number = /\d+/.exec(room.code)?.[0];
+  if (!number) return room.description;
+  const repeats = (n: string) => Number(n) === Number(number);
+  const text = room.description
+    .replace(/\s*\((?:[^()\d]*\s)?(\d+)\)/g, (all, n: string) => (repeats(n) ? '' : all))
+    .replace(/\s+(\d+)$/, (all, n: string) => (repeats(n) ? '' : all))
+    .trim();
+  return text || room.description;
+}
+
 /** "40 míst", "cca 20 míst"; other published forms ("20 míst, 16 PC") as they are. */
 export function capacityLabel(capacity: string): string {
   const text = capacity.trim();
