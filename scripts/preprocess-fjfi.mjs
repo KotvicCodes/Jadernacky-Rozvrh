@@ -128,6 +128,15 @@ async function main() {
       if (failure) throw failure.reason;
     } finally { await Promise.allSettled(engines.map(({ worker }) => worker.terminate())); }
   }
+  // Lectures shared by several programs are printed the same in each timetable;
+  // a copy OCR misread takes the code the other copies agree on.
+  const missing = jobs.find((job) => !job.data);
+  if (missing) throw new Error(`Missing recognition result for ${missing.id}`);
+  const reconciled = runtime.reconcileSharedLessons(jobs.map((job) => ({ id: job.id, lessons: job.data.lessons })));
+  reconciled.timetables.forEach((timetable, index) => {
+    jobs[index].data = runtime.parseOfficialTimetable({ ...jobs[index].data, lessons: timetable.lessons }, jobs[index].id);
+  });
+  for (const fix of reconciled.corrections) console.log(`${fix.id} day ${fix.day} ${fix.start}:00: ${JSON.stringify(fix.from)} → ${fix.to} (shared lesson)`);
   const keep = new Set(['manifest.json']);
   let bytes = 0;
   let lessons = 0;
@@ -146,10 +155,10 @@ async function main() {
   // Publish the manifest only once every timetable is complete and valid.
   atomicJson(join(OUT, 'manifest.json'), published);
   for (const file of readdirSync(OUT)) if (!keep.has(file) && /\.(json|pdf|png|tmp)$/.test(file)) rmSync(join(OUT, file));
-  console.log(`Published ${jobs.length} timetables, ${lessons} lessons, ${bytes} bytes of JSON; ${unnamed} unnamed lessons to review.`);
+  console.log(`Published ${jobs.length} timetables, ${lessons} lessons, ${bytes} bytes of JSON; ${unnamed} unnamed lessons to review; ${reconciled.corrections.length} codes taken from shared lessons.`);
   if (process.env.GITHUB_STEP_SUMMARY) {
     const { appendFileSync } = await import('node:fs');
-    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Timetable preprocessing: ${jobs.length} files, ${lessons} lessons, ${bytes} bytes of JSON, ${jobs.length - pending.length} reused results, ${unnamed} unnamed lessons.\n`);
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Timetable preprocessing: ${jobs.length} files, ${lessons} lessons, ${bytes} bytes of JSON, ${jobs.length - pending.length} reused results, ${unnamed} unnamed lessons, ${reconciled.corrections.length} codes taken from shared lessons.\n`);
   }
 }
 
