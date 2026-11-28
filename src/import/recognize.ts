@@ -55,11 +55,14 @@ export function pickReading(readings: OcrResult[]): string {
   return best;
 }
 
-/** Let nearby readings agree on a known course without overriding a valid winner. */
+/**
+ * Let nearby readings agree on a known course without overriding a valid
+ * winner. A known code is written as the catalogue has it ("DIM1cv", not "DiM1cv").
+ */
 export function pickCourseReading(readings: OcrResult[], department?: string, matcher: CourseMatcher = courseMatcher): string {
   const winner = pickReading(readings);
-  if (matcher.isKnown(winner)) return winner;
-  return pickReading(readings.map((reading) => ({ ...reading, text: matcher.snap(reading.text, department) })));
+  if (matcher.isKnown(winner)) return matcher.canonical(winner);
+  return matcher.canonical(pickReading(readings.map((reading) => ({ ...reading, text: matcher.snap(reading.text, department) }))));
 }
 
 /** Cleans OCR output for a subject code such as "MAN.rez", "JAZ.3" or "LALcv". */

@@ -1,3 +1,4 @@
+import { applyCorrections } from './corrections';
 import { createSchedule, normalizeSchedule, type Schedule } from './model';
 
 const STORAGE_KEY = 'jaderka-rozvrh:v1';
@@ -25,6 +26,8 @@ export function parseState(raw: string | null): AppState {
   const obj = data as Record<string, unknown>;
   const schedules = Array.isArray(obj.schedules)
     ? obj.schedules.map(normalizeSchedule).filter((s): s is Schedule => s !== null)
+      // Codes misread in earlier official data are fixed when saved timetables load.
+      .map((s) => ({ ...s, lessons: applyCorrections(s.lessons) }))
     : [];
   if (schedules.length === 0) return initialState();
   const activeId =

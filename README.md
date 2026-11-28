@@ -92,6 +92,10 @@ Every deployment run automatically:
 4. Recognizes every timetable using the same OCR and correction logic as file imports. Recognition results
    are reused when the source PDF, recognition code, dictionaries and dependencies are unchanged. The
    complete validated set is published as content-hashed JSON files and a manifest in `public/fjfi/`.
+   A lecture shared by several programs is printed identically in each of their timetables, so when one
+   copy's code is not a known course (OCR read `D` for `DIM1`) and the other copies agree on exactly one
+   known code, that code is used. These fixes are also bundled into the app and applied to timetables
+   saved in the browser when they load, so earlier imports are corrected without importing again.
    The November 2026 set contains 108 timetables and 1,969 lessons in about 208 KB of lesson JSON, instead
    of 70.7 MB of source PDFs. Selecting a timetable downloads only its JSON and creates a fresh editable tab.
    A first run does the full OCR pass; unchanged deployments reuse all results. The renderer
