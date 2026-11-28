@@ -61,7 +61,7 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
       { class: 'rooms-item', 'data-room': room.code },
       h('span', { class: 'rooms-code' }, room.code, sameRoom ? h('span', { class: 'rooms-tag' }, 'stejná učebna') : null),
       h('span', { class: 'rooms-line' }, room.description),
-      h('span', { class: 'rooms-line rooms-meta' }, [capacityLabel(room.capacity), room.kos ? `KOS ${room.kos}` : ''].filter(Boolean).join(' · ')),
+      room.capacity ? h('span', { class: 'rooms-line rooms-meta' }, capacityLabel(room.capacity)) : null,
     );
 
     const render = () => {

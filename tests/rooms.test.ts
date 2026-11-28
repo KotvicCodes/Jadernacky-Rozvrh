@@ -8,7 +8,7 @@ import { loadState, saveState } from '../src/storage';
 const draft = (day: number, start: number, duration: number, subject: string, room = '', lecturer = ''): LessonDraft =>
   ({ day, start, duration, subject, room, lecturer, color: 'green' });
 const lesson = (id: string, ...args: Parameters<typeof draft>): Lesson => normalizeLesson({ id, ...draft(...args) });
-const room = (code: string, building = 'Trojanova', capacity = '30'): KnownRoom => ({ code, kos: '', description: 'učebna', building, capacity });
+const room = (code: string, building = 'Trojanova', capacity = '30'): KnownRoom => ({ code, description: 'učebna', building, capacity });
 
 const ROOMS = [room('T-201', 'Trojanova', '155'), room('T-209'), room('B-103', 'Břehová', '180'), room('B-115', 'Břehová')];
 const codes = (rooms: readonly KnownRoom[]) => rooms.map((r) => r.code);
@@ -58,9 +58,8 @@ describe('findFreeRooms', () => {
   it('offers FJFI rooms in Prague only', () => {
     expect(codes(FINDER_ROOMS)).toEqual(expect.arrayContaining(['T-209', 'B-103', 'KJR-L144']));
     expect(FINDER_ROOMS.some((r) => /děčín/i.test(r.building))).toBe(false);
-    // Rooms of other faculties have no KOS code and cannot be booked.
+    // Rooms of other faculties cannot be booked and their use is not on our timetables.
     expect(codes(FINDER_ROOMS)).not.toContain('CH1');
-    expect(FINDER_ROOMS.every((r) => r.kos)).toBe(true);
   });
 });
 

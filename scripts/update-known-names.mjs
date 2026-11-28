@@ -54,8 +54,6 @@ ${list(sorted(rooms))}
 export interface KnownRoom {
   /** Code as printed on the timetables, e.g. "T-209". */
   code: string;
-  /** Code in KOS, used for bookings, e.g. "TR:209". */
-  kos: string;
   /** "učebna", "počítačová učebna", … as published. */
   description: string;
   /** "Trojanova", "Břehová", … */
@@ -66,7 +64,7 @@ export interface KnownRoom {
 
 /** FJFI rooms (those with a KOS code) from the classroom list, in its order, for the free-room finder. */
 export const KNOWN_ROOM_DETAILS: readonly KnownRoom[] = [
-${[...roomDetails.values()].map((r) => `  ${JSON.stringify({ code: r.code, kos: r.kos, description: r.description, building: r.building, capacity: r.capacity })},`).join('\n')}
+${[...roomDetails.values()].map((r) => `  ${JSON.stringify({ code: r.code, description: r.description, building: r.building, capacity: r.capacity })},`).join('\n')}
 ];
 `,
 );
