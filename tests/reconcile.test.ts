@@ -45,6 +45,15 @@ describe('reconcileSharedLessons', () => {
     expect(subjects(result)).toEqual({ a: ['ZFP', 'SOP', 'DIM2'], b: ['ZFP', 'SOP', 'DIM2'], c: ['DIM2cv'], d: ['DIM1', 'DIM2cv'] });
   });
 
+  it('never turns a reading that ends in cv or .rez into another kind', () => {
+    const result = reconcileSharedLessons([
+      { id: 'a', lessons: [lesson(0, 8, 2, 'DIMcv', 'Novák', 'T-105'), lesson(1, 8, 2, 'XYcv', 'Kůs', 'T-201'), lesson(2, 8, 2, 'QQ.rez', 'Kůs', 'T-201'), lesson(3, 8, 2, '', 'Kůs', 'T-201')] },
+      { id: 'b', lessons: [lesson(0, 8, 2, 'DIM1', 'Novák', 'T-105'), lesson(1, 8, 2, 'DIM1cv', 'Kůs', 'T-201'), lesson(2, 8, 2, 'DIM1', 'Kůs', 'T-201'), lesson(3, 8, 2, 'DIM1cv', 'Kůs', 'T-201')] },
+    ], matcher);
+    // An exercise sharing its slot only with a lecture stays as read; a bare or empty reading takes the only code.
+    expect(subjects(result)).toEqual({ a: ['DIMcv', 'DIM1cv', 'QQ.rez', 'DIM1cv'], b: ['DIM1', 'DIM1cv', 'DIM1', 'DIM1cv'] });
+  });
+
   it('leaves valid readings, ambiguous slots and lessons without a lecturer or room alone', () => {
     const timetables = [
       // Both readings are valid courses: no way to tell which copy is wrong.

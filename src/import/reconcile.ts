@@ -56,9 +56,11 @@ export function reconcileSharedLessons<T extends SharedTimetable>(
       const key = lessonKey(lesson);
       const codes = key ? known.get(key) : undefined;
       if (!codes || matcher.isKnown(lesson.subject)) return lesson;
-      // A lecture and its exercise can share a slot; keep to the reading's kind when they do.
+      // A reading that ends in cv or .rez keeps that kind. A bare reading ("D", or nothing) may have lost
+      // its suffix, so it takes the only code, or the lecture when a lecture and its exercise share the slot.
+      const kind = kindOf(lesson.subject);
       let candidates = [...codes];
-      if (candidates.length > 1) candidates = candidates.filter((code) => kindOf(code) === kindOf(lesson.subject));
+      if (kind || candidates.length > 1) candidates = candidates.filter((code) => kindOf(code) === kind);
       if (candidates.length !== 1) return lesson;
       corrections.push({ id: timetable.id, day: lesson.day, start: lesson.start, from: lesson.subject, to: candidates[0]!, lesson });
       return { ...lesson, subject: candidates[0]! };
