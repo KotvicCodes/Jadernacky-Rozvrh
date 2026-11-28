@@ -21,36 +21,27 @@ describe('findFreeRooms', () => {
 
   it('treats a room as busy when any lesson overlaps any part of the requested time', () => {
     // Monday 11–13 overlaps MAN1 (10–12) by its first hour; FY1cv starts right when it ends.
-    const result = findFreeRooms({ day: 0, start: 11, duration: 2 }, catalog, undefined, ROOMS);
+    const result = findFreeRooms({ day: 0, start: 11, duration: 2 }, catalog, ROOMS);
     expect(codes(result.free)).toEqual(['T-209', 'B-103', 'B-115']);
     expect(result.busy.map((b) => [b.room.code, b.uses.map((u) => [u.subject, u.start, u.sources])])).toEqual([
       ['T-201', [['MAN1', 10, ['JCF1', 'JCF2']]]],
     ]);
     // A lesson that only touches the requested time does not block it.
-    expect(codes(findFreeRooms({ day: 0, start: 12, duration: 1 }, catalog, undefined, ROOMS).free)).toEqual(codes(ROOMS));
+    expect(codes(findFreeRooms({ day: 0, start: 12, duration: 1 }, catalog, ROOMS).free)).toEqual(codes(ROOMS));
     // Another weekday is independent.
-    expect(codes(findFreeRooms({ day: 1, start: 8, duration: 4 }, catalog, undefined, ROOMS).free)).toEqual(['T-201', 'B-103', 'B-115']);
+    expect(codes(findFreeRooms({ day: 1, start: 8, duration: 4 }, catalog, ROOMS).free)).toEqual(['T-201', 'B-103', 'B-115']);
   });
 
   it('matches room codes regardless of case, spaces and dashes, and reads lessons held in two rooms', () => {
     expect(roomKey(' t 209 ')).toBe(roomKey('T-209'));
     const shared: CatalogTimetable[] = [{ id: 'x', short: 'X', label: 'X', lessons: [draft(2, 9, 2, 'PRA', 'T 209, B-115')] }];
-    const result = findFreeRooms({ day: 2, start: 9, duration: 1 }, shared, undefined, ROOMS);
+    const result = findFreeRooms({ day: 2, start: 9, duration: 1 }, shared, ROOMS);
     expect(codes(result.busy.map((b) => b.room))).toEqual(['T-209', 'B-115']);
-  });
-
-  it('does not let the lesson being replaced block its own room', () => {
-    const replaced = lesson('man', 0, 10, 2, 'MAN1', 'T-201');
-    // Moving MAN1 an hour later overlaps its usual slot, which will be empty.
-    expect(codes(findFreeRooms({ day: 0, start: 11, duration: 2 }, catalog, replaced, ROOMS).free)).toContain('T-201');
-    // A different course in that room still blocks it.
-    const other = lesson('fy', 0, 10, 2, 'FY1', 'T-201');
-    expect(codes(findFreeRooms({ day: 0, start: 11, duration: 2 }, catalog, other, ROOMS).free)).not.toContain('T-201');
   });
 
   it('reports every room busy when nothing is free', () => {
     const full: CatalogTimetable[] = [{ id: 'x', short: 'X', label: 'X', lessons: ROOMS.map((r) => draft(3, 8, 4, 'X', r.code)) }];
-    const result = findFreeRooms({ day: 3, start: 9, duration: 1 }, full, undefined, ROOMS);
+    const result = findFreeRooms({ day: 3, start: 9, duration: 1 }, full, ROOMS);
     expect(result.free).toEqual([]);
     expect(result.busy).toHaveLength(ROOMS.length);
   });
@@ -76,10 +67,9 @@ describe('room helpers', () => {
     ]);
   });
 
-  it('finds the own lessons at that time, apart from the replaced one', () => {
+  it('finds the own lessons at that time', () => {
     const own = [lesson('a', 0, 10, 2, 'MAN1'), lesson('b', 0, 12, 2, 'FY1'), lesson('c', 1, 10, 2, 'LAL1')];
     expect(ownClashes(own, { day: 0, start: 11, duration: 2 }).map((l) => l.id)).toEqual(['a', 'b']);
-    expect(ownClashes(own, { day: 0, start: 11, duration: 2 }, 'a').map((l) => l.id)).toEqual(['b']);
   });
 });
 
@@ -130,7 +120,8 @@ describe('Volné učebny dialog', () => {
       draft(2, 9, 2, 'LAL1', 'T-209'),
       draft(2, 12, 1, 'FY1cv', 'B-103'),
     ], own);
-    expect(dialog.querySelector('.finder-note')!.textContent).toMatch(/KOS nebo v Outlooku/);
+    expect(dialog.querySelector('.hint, .finder-note')).toBeNull();
+    expect(dialog.querySelector('select[name="lesson"]')).toBeNull();
 
     // Wednesday 10–12: LAL1 (9–11) blocks T-209 for the first hour; FY1cv starts after.
     select('day', 2);
@@ -144,12 +135,6 @@ describe('Volné učebny dialog', () => {
     // Three hours reach FY1cv in B-103 too.
     select('duration', 3);
     expect(busy()).toEqual(['B-103', 'T-209']);
-
-    // Picking the lesson to replace takes its length and puts its usual room first.
-    select('lesson', 'man');
-    expect(dialog.querySelector<HTMLSelectElement>('select[name="duration"]')!.value).toBe('2');
-    expect(free()[0]).toBe('T-201');
-    expect(dialog.querySelector('.rooms-tag')!.textContent).toBe('stejná učebna');
 
     // A time that clashes with another own lesson is pointed out.
     select('day', 1);

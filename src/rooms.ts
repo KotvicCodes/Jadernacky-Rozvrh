@@ -56,30 +56,19 @@ function roomKeys(field: string): Set<string> {
   return keys;
 }
 
-const same = (a: Slot, b: Slot) => a.day === b.day && a.start === b.start && a.duration === b.duration;
-
 /**
  * Splits `rooms` into free and busy for `slot`. A room is busy when any
- * catalogue lesson in it overlaps any part of the slot. `replaced` is the
- * lesson being moved away: its own occurrences in the catalogue (same time,
- * course and room) do not block its room.
+ * catalogue lesson in it overlaps any part of the slot.
  */
-export function findFreeRooms(
-  slot: Slot,
-  catalog: readonly CatalogTimetable[],
-  replaced?: Pick<Lesson, 'day' | 'start' | 'duration' | 'subject' | 'room'>,
-  rooms: readonly KnownRoom[] = FINDER_ROOMS,
-): RoomSearch {
+export function findFreeRooms(slot: Slot, catalog: readonly CatalogTimetable[], rooms: readonly KnownRoom[] = FINDER_ROOMS): RoomSearch {
   const byKey = new Map(rooms.map((room) => [roomKey(room.code), room]));
-  const replacedRooms = replaced ? roomKeys(replaced.room) : new Set<string>();
   const uses = new Map<KnownRoom, Map<string, RoomUse>>();
   for (const timetable of catalog) {
     for (const lesson of timetable.lessons) {
       if (!overlaps(lesson, slot)) continue;
-      const isReplaced = !!replaced && same(lesson, replaced) && subjectKey(lesson.subject) === subjectKey(replaced.subject);
       for (const key of roomKeys(lesson.room)) {
         const room = byKey.get(key);
-        if (!room || (isReplaced && replacedRooms.has(key))) continue;
+        if (!room) continue;
         let list = uses.get(room);
         if (!list) uses.set(room, (list = new Map()));
         const id = [lesson.start, lesson.duration, subjectKey(lesson.subject), lesson.lecturer.trim().toLowerCase()].join('|');
@@ -98,9 +87,9 @@ export function findFreeRooms(
   };
 }
 
-/** The user's own lessons at that time, apart from the one being replaced. */
-export function ownClashes(own: readonly Lesson[], slot: Slot, replacedId?: string): Lesson[] {
-  return own.filter((lesson) => lesson.id !== replacedId && overlaps(lesson, slot));
+/** The user's own lessons at that time. */
+export function ownClashes(own: readonly Lesson[], slot: Slot): Lesson[] {
+  return own.filter((lesson) => overlaps(lesson, slot));
 }
 
 /** "40 míst", "cca 20 míst"; other published forms ("20 míst, 16 PC") as they are. */

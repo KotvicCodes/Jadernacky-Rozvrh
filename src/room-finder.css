@@ -34,8 +34,7 @@
   border-radius: 6px;
   background: var(--bg);
 }
-.rooms-code { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-weight: 700; }
-.rooms-tag { padding: 0 0.35rem; border-radius: 3px; background: #eef6fc; color: var(--brand); font-size: 0.7rem; font-weight: 600; }
+.rooms-code { font-weight: 700; }
 .rooms-line { font-size: 0.78rem; line-height: 1.35; overflow-wrap: anywhere; }
 .rooms-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
 .rooms-empty { padding: 0.5rem 0.6rem; border: 1px dashed var(--find-line); border-radius: 6px; }

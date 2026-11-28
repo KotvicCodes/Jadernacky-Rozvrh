@@ -1,7 +1,7 @@
 /**
- * UI of "Volné učebny": a teacher picks the lesson to replace (optional),
- * the weekday, start and length, and sees which rooms are free for the
- * whole time. Nothing in the timetable changes.
+ * UI of "Volné učebny": a teacher picks the weekday, start and length, and
+ * sees which rooms are free for the whole time. Nothing in the timetable
+ * changes.
  */
 import { DAYS } from './config';
 import { closeOnBackdropClick } from './dialog';
@@ -9,11 +9,9 @@ import { h } from './dom';
 import { slotLabel } from './finder';
 import { formatHour, maxDuration, startHours, type Lesson } from './model';
 import type { CatalogTimetable } from './replacements';
-import { capacityLabel, findFreeRooms, groupByBuilding, ownClashes, roomKey, type KnownRoom } from './rooms';
+import { capacityLabel, findFreeRooms, groupByBuilding, ownClashes, type KnownRoom } from './rooms';
 import './finder.css';
 import './room-finder.css';
-
-const NO_LESSON = '';
 
 function countLabel(n: number, one: string, few: string, many: string): string {
   return `${n} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`;
@@ -28,14 +26,7 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
     let progress = '';
     /** Whether the teacher unfolded the busy rooms; kept while the time changes. */
     let busyOpen = false;
-    const sorted = [...lessons].sort((a, b) => a.day - b.day || a.start - b.start || a.subject.localeCompare(b.subject, 'cs'));
 
-    const lessonSelect = h(
-      'select',
-      { name: 'lesson' },
-      h('option', { value: NO_LESSON }, 'žádná, jen hledám učebnu'),
-      ...sorted.map((l) => h('option', { value: l.id }, [l.subject || 'Bez názvu', slotLabel(l, true), l.room].filter(Boolean).join(' · '))),
-    );
     const day = h('select', { name: 'day' }, ...DAYS.map((d, i) => h('option', { value: i, selected: i === 0 }, d)));
     const start = h('select', { name: 'start' }, ...startHours().map((hour) => h('option', { value: hour, selected: hour === 10 }, formatHour(hour))));
     const duration = h('select', { name: 'duration' });
@@ -46,7 +37,6 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
     };
     fillDurations(2);
 
-    const replaced = () => sorted.find((l) => l.id === lessonSelect.value);
     const slot = () => ({ day: Number(day.value), start: Number(start.value), duration: Number(duration.value) });
 
     const field = (label: string, control: HTMLElement) => h('label', { class: 'field' }, h('span', {}, label), control);
@@ -56,18 +46,17 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
     const announce = h('p', { class: 'rooms-announce', role: 'status', 'aria-live': 'polite' });
     const closeBtn = h('button', { type: 'button', class: 'btn btn-primary' }, 'Zavřít');
 
-    const roomItem = (room: KnownRoom, sameRoom: boolean) => h(
+    const roomItem = (room: KnownRoom) => h(
       'li',
       { class: 'rooms-item', 'data-room': room.code },
-      h('span', { class: 'rooms-code' }, room.code, sameRoom ? h('span', { class: 'rooms-tag' }, 'stejná učebna') : null),
+      h('span', { class: 'rooms-code' }, room.code),
       h('span', { class: 'rooms-line' }, room.description),
       room.capacity ? h('span', { class: 'rooms-line rooms-meta' }, capacityLabel(room.capacity)) : null,
     );
 
     const render = () => {
       const s = slot();
-      const lesson = replaced();
-      const mine = ownClashes(lessons, s, lesson?.id);
+      const mine = ownClashes(lessons, s);
       clash.hidden = !mine.length;
       clash.textContent = mine.length
         ? `V tomto čase máš v rozvrhu ${[...new Set(mine.map((l) => l.subject || 'jinou hodinu'))].join(', ')}.`
@@ -82,10 +71,7 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
         return;
       }
 
-      const { free, busy } = findFreeRooms(s, catalog.timetables, lesson);
-      const ownRoom = lesson ? roomKey(lesson.room) : '';
-      // The lesson's usual room (and so its building) first, when it is free.
-      const ordered = ownRoom ? [...free].sort((a, b) => Number(roomKey(b.code) === ownRoom) - Number(roomKey(a.code) === ownRoom)) : free;
+      const { free, busy } = findFreeRooms(s, catalog.timetables);
       const heading = h(
         'h3',
         { class: 'rooms-head' },
@@ -96,11 +82,11 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
         ? h(
           'div',
           { class: 'rooms-groups' },
-          ...groupByBuilding(ordered).map((group) => h(
+          ...groupByBuilding(free).map((group) => h(
             'section',
             { class: 'rooms-group', 'aria-label': group.building },
             h('h4', {}, group.building),
-            h('ul', { class: 'rooms-list' }, ...group.rooms.map((room) => roomItem(room, roomKey(room.code) === ownRoom))),
+            h('ul', { class: 'rooms-list' }, ...group.rooms.map(roomItem)),
           )),
         )
         : h('p', { class: 'finder-empty rooms-empty' }, 'V tomto čase jsou všechny učebny obsazené. Zkus jiný den, začátek nebo kratší délku.');
@@ -152,11 +138,6 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
       render();
     };
 
-    lessonSelect.addEventListener('change', () => {
-      const lesson = replaced();
-      if (lesson) fillDurations(lesson.duration);
-      render();
-    });
     day.addEventListener('change', render);
     start.addEventListener('change', () => {
       fillDurations(Number(duration.value));
@@ -168,13 +149,10 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
       'form',
       { method: 'dialog', class: 'lesson-form finder-form rooms-form' },
       h('h2', {}, 'Volné učebny'),
-      h('p', { class: 'hint' }, 'Vyber, kdy chceš hodinu nahradit. Ukážu učebny, ve kterých podle oficiálních rozvrhů po celou tu dobu nic neprobíhá.'),
-      sorted.length ? field('Nahrazovaná hodina (nepovinné)', lessonSelect) : null,
       h('div', { class: 'field-row field-row--3' }, field('Den', day), field('Začátek', start), field('Délka', duration)),
       clash,
       results,
       announce,
-      h('p', { class: 'finder-note' }, 'Vychází z pravidelné výuky v rozvrzích bakalářských a navazujících ročníků. Jednorázové rezervace (zkoušky, akce) ani jazyky tu nejsou, před rezervací proto učebnu ověř v KOS nebo v Outlooku.'),
       h('div', { class: 'dialog-actions' }, h('span', { class: 'spacer' }), closeBtn),
     );
     form.addEventListener('submit', (event) => event.preventDefault());
@@ -189,7 +167,7 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
 
     document.body.append(dialog);
     dialog.showModal();
-    (sorted.length ? lessonSelect : day).focus();
+    day.focus();
     void load();
   });
 }
