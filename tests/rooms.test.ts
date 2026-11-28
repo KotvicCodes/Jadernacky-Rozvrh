@@ -103,12 +103,13 @@ describe('Volné učebny dialog', () => {
     }));
   }
 
-  async function open(file: string, catalogLessons: LessonDraft[], own: Lesson[]) {
+  async function open(file: string, catalogLessons: LessonDraft[], own: Lesson[], remembered?: string) {
     HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
     HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')); };
     stubCatalog(file, catalogLessons);
     localStorage.clear();
     saveState({ schedules: [{ id: 's1', name: '', specId: 'JCF1', lessons: own, updatedAt: 0 }], activeId: 's1' });
+    if (remembered !== undefined) localStorage.setItem('jaderka-rozvrh:rooms-building', remembered);
     document.body.replaceChildren();
     const root = document.createElement('div');
     document.body.append(root);
@@ -158,6 +159,46 @@ describe('Volné učebny dialog', () => {
     [...dialog.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Zavřít')!.click();
     expect(document.querySelector('.rooms-dialog')).toBeNull();
     expect(loadState().schedules[0]!.lessons).toEqual(own);
+  });
+
+  it('narrows the rooms to one building and remembers it for next time', async () => {
+    const catalogLessons = [draft(2, 9, 2, 'LAL1', 'T-209'), draft(2, 9, 2, 'FY1cv', 'B-103')];
+    const { dialog, select, free, busy } = await open('rooms-c.json', catalogLessons, []);
+    const building = dialog.querySelector<HTMLSelectElement>('select[name="building"]')!;
+    expect([...building.options].map((o) => o.text)).toEqual(['Všechny budovy', 'Břehová', 'Trojanova', 'Troja']);
+    expect(building.value).toBe('');
+    select('day', 2);
+    select('start', 9);
+    expect(free()).toEqual(expect.arrayContaining(['B-115', 'T-201', 'KJR-L144']));
+    expect([...dialog.querySelectorAll('.rooms-group h4')].map((el) => el.textContent)).toEqual(['Břehová', 'Trojanova', 'Troja']);
+
+    select('building', 'Trojanova');
+    expect(free().length).toBe(FINDER_ROOMS.filter((r) => r.building === 'Trojanova').length - 1);
+    expect(free().every((code) => FINDER_ROOMS.find((r) => r.code === code)!.building === 'Trojanova')).toBe(true);
+    expect(busy()).toEqual(['T-209']);
+    // One building needs no building heading.
+    expect(dialog.querySelector('.rooms-group h4')).toBeNull();
+    expect(localStorage.getItem('jaderka-rozvrh:rooms-building')).toBe('Trojanova');
+
+    // The next time the dialog opens, the same building is chosen.
+    [...dialog.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Zavřít')!.click();
+    const again = await open('rooms-c.json', catalogLessons, [], 'Trojanova');
+    expect(again.dialog.querySelector<HTMLSelectElement>('select[name="building"]')!.value).toBe('Trojanova');
+    again.select('building', '');
+    expect(localStorage.getItem('jaderka-rozvrh:rooms-building')).toBeNull();
+    // A building that is no longer offered falls back to all of them.
+    const gone = await open('rooms-c.json', catalogLessons, [], 'Děčín');
+    expect(gone.dialog.querySelector<HTMLSelectElement>('select[name="building"]')!.value).toBe('');
+  });
+
+  it('names the building when every room in it is busy', async () => {
+    const troja = FINDER_ROOMS.filter((r) => r.building === 'Troja');
+    const { dialog, select, free } = await open('rooms-d.json', troja.map((r) => draft(1, 8, 4, 'X', r.code)), [], 'Troja');
+    select('day', 1);
+    select('start', 9);
+    select('duration', 1);
+    expect(free()).toEqual([]);
+    expect(dialog.querySelector('.rooms-empty')!.textContent).toBe('V tomto čase jsou všechny učebny v budově Troja obsazené. Zkus jiný den, začátek, kratší délku nebo jinou budovu.');
   });
 
   it('says so when no room is free and lets the teacher choose another time', async () => {

@@ -9,9 +9,31 @@ import { h } from './dom';
 import { slotLabel } from './finder';
 import { formatHour, maxDuration, startHours, type Lesson } from './model';
 import type { CatalogTimetable } from './replacements';
-import { capacityLabel, findFreeRooms, groupByBuilding, ownClashes, roomDescription, type KnownRoom } from './rooms';
+import { FINDER_ROOMS, capacityLabel, findFreeRooms, groupByBuilding, ownClashes, roomDescription, type KnownRoom } from './rooms';
 import './finder.css';
 import './room-finder.css';
+
+/** Where the last chosen building is remembered, in this browser only. */
+const BUILDING_KEY = 'jaderka-rozvrh:rooms-building';
+const ALL_BUILDINGS = '';
+
+function rememberedBuilding(buildings: readonly string[]): string {
+  try {
+    const saved = localStorage.getItem(BUILDING_KEY) ?? ALL_BUILDINGS;
+    return buildings.includes(saved) ? saved : ALL_BUILDINGS;
+  } catch {
+    return ALL_BUILDINGS;
+  }
+}
+
+function rememberBuilding(building: string): void {
+  try {
+    if (building) localStorage.setItem(BUILDING_KEY, building);
+    else localStorage.removeItem(BUILDING_KEY);
+  } catch {
+    // Private window or blocked storage: the choice just isn't remembered.
+  }
+}
 
 function countLabel(n: number, one: string, few: string, many: string): string {
   return `${n} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`;
@@ -27,6 +49,15 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
     /** Whether the teacher unfolded the busy rooms; kept while the time changes. */
     let busyOpen = false;
 
+    // Most people teach in one building, so the list can be narrowed to it; the choice is remembered.
+    const buildings = groupByBuilding(FINDER_ROOMS).map((group) => group.building);
+    const initialBuilding = rememberedBuilding(buildings);
+    const building = h(
+      'select',
+      { name: 'building' },
+      h('option', { value: ALL_BUILDINGS, selected: initialBuilding === ALL_BUILDINGS }, 'Všechny budovy'),
+      ...buildings.map((b) => h('option', { value: b, selected: b === initialBuilding }, b)),
+    );
     const day = h('select', { name: 'day' }, ...DAYS.map((d, i) => h('option', { value: i, selected: i === 0 }, d)));
     const start = h('select', { name: 'start' }, ...startHours().map((hour) => h('option', { value: hour, selected: hour === 10 }, formatHour(hour))));
     const duration = h('select', { name: 'duration' });
@@ -71,7 +102,8 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
         return;
       }
 
-      const { free, busy } = findFreeRooms(s, catalog.timetables);
+      const rooms = building.value ? FINDER_ROOMS.filter((room) => room.building === building.value) : FINDER_ROOMS;
+      const { free, busy } = findFreeRooms(s, catalog.timetables, rooms);
       const heading = h(
         'h3',
         { class: 'rooms-head' },
@@ -85,11 +117,13 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
           ...groupByBuilding(free).map((group) => h(
             'section',
             { class: 'rooms-group', 'aria-label': group.building },
-            h('h4', {}, group.building),
+            building.value ? null : h('h4', {}, group.building),
             h('ul', { class: 'rooms-list' }, ...group.rooms.map(roomItem)),
           )),
         )
-        : h('p', { class: 'finder-empty rooms-empty' }, 'V tomto čase jsou všechny učebny obsazené. Zkus jiný den, začátek nebo kratší délku.');
+        : h('p', { class: 'finder-empty rooms-empty' }, building.value
+          ? `V tomto čase jsou všechny učebny v budově ${building.value} obsazené. Zkus jiný den, začátek, kratší délku nebo jinou budovu.`
+          : 'V tomto čase jsou všechny učebny obsazené. Zkus jiný den, začátek nebo kratší délku.');
 
       let busySection: HTMLDetailsElement | null = null;
       if (busy.length) {
@@ -138,6 +172,10 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
       render();
     };
 
+    building.addEventListener('change', () => {
+      rememberBuilding(building.value);
+      render();
+    });
     day.addEventListener('change', render);
     start.addEventListener('change', () => {
       fillDurations(Number(duration.value));
@@ -149,6 +187,7 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
       'form',
       { method: 'dialog', class: 'lesson-form finder-form rooms-form' },
       h('h2', {}, 'Volné učebny'),
+      field('Budova', building),
       h('div', { class: 'field-row field-row--3' }, field('Den', day), field('Začátek', start), field('Délka', duration)),
       clash,
       results,
