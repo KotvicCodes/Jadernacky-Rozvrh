@@ -19,6 +19,8 @@ export interface SharedCorrection {
   start: number;
   from: string;
   to: string;
+  /** The lesson as read, before the fix. */
+  lesson: LessonDraft;
 }
 
 /** Same lesson: same time, lecturer and room. Lessons without a lecturer or room are never matched. */
@@ -58,7 +60,7 @@ export function reconcileSharedLessons<T extends SharedTimetable>(
       let candidates = [...codes];
       if (candidates.length > 1) candidates = candidates.filter((code) => kindOf(code) === kindOf(lesson.subject));
       if (candidates.length !== 1) return lesson;
-      corrections.push({ id: timetable.id, day: lesson.day, start: lesson.start, from: lesson.subject, to: candidates[0]! });
+      corrections.push({ id: timetable.id, day: lesson.day, start: lesson.start, from: lesson.subject, to: candidates[0]!, lesson });
       return { ...lesson, subject: candidates[0]! };
     }),
   }));

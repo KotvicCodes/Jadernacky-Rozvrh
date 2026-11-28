@@ -30,7 +30,9 @@ describe('reconcileSharedLessons', () => {
       Bc1AAA1: ['DIM1', 'DIM1cv'],
       Bc1MI_MM1: ['DIM1'],
     });
-    expect(result.corrections).toEqual([{ id: 'Bc1AIPV1', day: 2, start: 14, from: 'D', to: 'DIM1' }]);
+    expect(result.corrections).toEqual([
+      { id: 'Bc1AIPV1', day: 2, start: 14, from: 'D', to: 'DIM1', lesson: lesson(2, 14, 2, 'D', 'Masáková', 'T-101') },
+    ]);
   });
 
   it('fills unknown and empty readings, and keeps to exercises when the reading is one', () => {

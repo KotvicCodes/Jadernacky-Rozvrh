@@ -137,6 +137,13 @@ async function main() {
     jobs[index].data = runtime.parseOfficialTimetable({ ...jobs[index].data, lessons: timetable.lessons }, jobs[index].id);
   });
   for (const fix of reconciled.corrections) console.log(`${fix.id} day ${fix.day} ${fix.start}:00: ${JSON.stringify(fix.from)} → ${fix.to} (shared lesson)`);
+  // The app applies these to saved timetables when they load (src/corrections.ts).
+  const corrections = new Map();
+  for (const fix of reconciled.corrections) {
+    const { day, start, duration, lecturer, room } = fix.lesson;
+    corrections.set([day, start, duration, lecturer, room, fix.from].join('\0'), { day, start, duration, lecturer, room, from: fix.from, to: fix.to });
+  }
+  atomicJson(join(ROOT, 'src', 'import', 'shared-corrections.json'), { version: 1, corrections: [...corrections.values()] });
   const keep = new Set(['manifest.json']);
   let bytes = 0;
   let lessons = 0;

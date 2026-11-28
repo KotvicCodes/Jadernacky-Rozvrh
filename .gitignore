@@ -4,3 +4,5 @@ dist/
 .DS_Store
 public/fjfi/
 .cache/
+# Written by npm run preprocess-fjfi; bundled at deploy.
+src/import/shared-corrections.json
