@@ -153,7 +153,7 @@ describe('Volné učebny dialog', () => {
     select('day', 1);
     select('start', 12);
     expect(dialog.querySelector<HTMLElement>('.rooms-clash')!.hidden).toBe(false);
-    expect(dialog.querySelector('.rooms-clash')!.textContent).toBe('V tomto čase máš v rozvrhu FY1.');
+    expect(dialog.querySelector('.rooms-clash')!.textContent).toBe('V tomto čase máš v rozvrhu FY1');
 
     [...dialog.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Zavřít')!.click();
     expect(document.querySelector('.rooms-dialog')).toBeNull();

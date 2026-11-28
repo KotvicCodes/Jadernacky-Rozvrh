@@ -59,7 +59,7 @@ export function openRoomFinder(lessons: readonly Lesson[]): Promise<void> {
       const mine = ownClashes(lessons, s);
       clash.hidden = !mine.length;
       clash.textContent = mine.length
-        ? `V tomto čase máš v rozvrhu ${[...new Set(mine.map((l) => l.subject || 'jinou hodinu'))].join(', ')}.`
+        ? `V tomto čase máš v rozvrhu ${[...new Set(mine.map((l) => l.subject || 'jinou hodinu'))].join(', ')}`
         : '';
 
       if (!catalog) {
