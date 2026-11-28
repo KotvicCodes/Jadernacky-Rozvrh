@@ -300,14 +300,6 @@ describe('closing timetable tabs', () => {
     expect(loadState().activeId).toBe(active);
   });
 
-  it('uses the same confirmation and neighbour logic for Smazat rozvrh', () => {
-    const ids = loadState().schedules.map((s) => s.id);
-    tabs(root)[1]!.click();
-    root.querySelector<HTMLButtonElement>('.btn-danger')!.click();
-    expect(confirm).toHaveBeenCalledWith('Opravdu smazat rozvrh „Rozvrh 2“?');
-    expect(loadState().schedules.map((s) => s.id)).toEqual([ids[0], ids[2]]);
-    expect(loadState().activeId).toBe(ids[2]);
-  });
 });
 
 describe('lesson edits while the active schedule changes', () => {
@@ -434,10 +426,10 @@ describe('timetable ID in the corner', () => {
 });
 
 describe('toolbar and header', () => {
-  it('has the download, import, replacement and delete buttons in that order, and no add button', () => {
+  it('has the download, import, replacement and free-room buttons in that order, and no add or delete button', () => {
     const root = setup();
     const buttons = [...root.querySelectorAll<HTMLButtonElement>('.toolbar-actions > button, .toolbar-actions > .menu-wrap > .btn')].map((b) => b.textContent);
-    expect(buttons).toEqual(['Stáhnout', 'Importovat', 'Nahradit hodinu', 'Smazat rozvrh']);
+    expect(buttons).toEqual(['Stáhnout', 'Importovat', 'Nahradit hodinu', 'Volné učebny']);
   });
 
   it('shows no subtitle or hint, but credits the author and links bug reports to the repo', () => {
@@ -574,7 +566,7 @@ describe('Importovat menu', () => {
     const { button, menu } = menuFor(root, 'Importovat');
     button.click();
     expect(menu.hidden).toBe(false);
-    root.querySelector<HTMLButtonElement>('.btn-danger')!.focus();
+    root.querySelector<HTMLButtonElement>('.btn-rooms')!.focus();
     expect(menu.hidden).toBe(true);
   });
 });

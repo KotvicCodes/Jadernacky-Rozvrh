@@ -2,13 +2,14 @@
 /**
  * Regenerates src/import/known-names.ts from rozvrh.fjfi.cvut.cz: every
  * teacher listed on the department pages (/rozvrh/ucitele/<katedra>) and
- * every room code from the classroom list (/seznam-uceben).
+ * every room from the classroom list (/seznam-uceben), with its description,
+ * building and capacity for the free-room finder.
  *
  *   node scripts/update-known-names.mjs
  */
 import { renameSync, writeFileSync } from 'node:fs';
 import { get } from './fjfi-fetch.mjs';
-import { parseRoomCodes, parseTeacherNames } from './fjfi-metadata.mjs';
+import { parseRooms, parseTeacherNames } from './fjfi-metadata.mjs';
 
 const BASE = 'https://rozvrh.fjfi.cvut.cz';
 const DEPARTMENTS = ['km', 'kf', 'khvj', 'kipl', 'klff', 'kmat', 'kjch', 'kdaiz', 'kjr', 'ksi'];
@@ -24,7 +25,12 @@ for (const dept of DEPARTMENTS) {
 }
 
 const rooms = new Set(['různé']);
-for (const room of parseRoomCodes(await page('/seznam-uceben'))) rooms.add(room);
+const roomDetails = new Map();
+for (const room of parseRooms(await page('/seznam-uceben'))) {
+  rooms.add(room.code);
+  // Rooms of other faculties (no KOS code) cannot be booked and their use is not on our timetables.
+  if (room.kos && !roomDetails.has(room.code)) roomDetails.set(room.code, room);
+}
 
 const sorted = (set) => [...set].sort((a, b) => a.localeCompare(b, 'cs'));
 const list = (items) => items.map((s) => `  ${JSON.stringify(s)},`).join('\n');
@@ -43,6 +49,22 @@ ${list(sorted(teachers))}
 /** Room codes as printed on the timetables ("Kód v rozvrhu"). */
 export const KNOWN_ROOMS: readonly string[] = [
 ${list(sorted(rooms))}
+];
+
+export interface KnownRoom {
+  /** Code as printed on the timetables, e.g. "T-209". */
+  code: string;
+  /** "učebna", "počítačová učebna", … as published. */
+  description: string;
+  /** "Trojanova", "Břehová", … */
+  building: string;
+  /** Capacity as published: "40", "20 míst, 16 PC", or empty. */
+  capacity: string;
+}
+
+/** FJFI rooms (those with a KOS code) from the classroom list, in its order, for the free-room finder. */
+export const KNOWN_ROOM_DETAILS: readonly KnownRoom[] = [
+${[...roomDetails.values()].map((r) => `  ${JSON.stringify({ code: r.code, description: r.description, building: r.building, capacity: r.capacity })},`).join('\n')}
 ];
 `,
 );

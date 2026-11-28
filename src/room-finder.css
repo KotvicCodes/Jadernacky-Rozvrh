@@ -1,0 +1,68 @@
+/* Free-room finder ("Volné učebny"): src/room-finder.ts. Builds on the finder dialog styles in finder.css. */
+.rooms-dialog { width: min(44rem, calc(100vw - 2rem)); }
+.rooms-clash { margin: 0; padding: 0.4rem 0.6rem; border-left: 3px solid var(--danger); background: #fef2f2; font-size: 0.85rem; }
+.rooms-clash[hidden] { display: none; }
+.rooms-results { display: flex; flex-direction: column; gap: 0.6rem; min-height: 3rem; }
+.rooms-results .btn { align-self: flex-start; }
+.rooms-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.6rem; margin: 0; font-size: 0.9rem; color: var(--brand); }
+.rooms-when { font-weight: 400; color: var(--text); font-variant-numeric: tabular-nums; }
+.rooms-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: min(45dvh, 22rem);
+  padding: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.rooms-group h4 { margin: 0 0 0.3rem; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.rooms-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rooms-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--find-line);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.rooms-code { font-weight: 700; }
+.rooms-line { font-size: 0.78rem; line-height: 1.35; overflow-wrap: anywhere; }
+.rooms-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+.rooms-empty { padding: 0.5rem 0.6rem; border: 1px dashed var(--find-line); border-radius: 6px; }
+.rooms-busy-list {
+  display: grid;
+  gap: 0.2rem;
+  max-height: 12rem;
+  margin: 0;
+  padding: 0 0 0 0.1rem;
+  overflow-y: auto;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--find-clash-text);
+  scrollbar-width: thin;
+}
+.rooms-busy-list strong { color: var(--text); }
+/* Read by screen readers only. */
+.rooms-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .rooms-list { grid-template-columns: 1fr; }
+  .rooms-groups { max-height: none; }
+}

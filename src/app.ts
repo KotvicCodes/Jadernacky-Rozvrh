@@ -240,7 +240,7 @@ export class App {
   }
 
   /**
-   * Deletes a timetable after confirmation (Smazat rozvrh, the tab's ×, Delete
+   * Deletes a timetable after confirmation (the tab's ×, Delete
    * on a tab). Closing the active one switches to its neighbour; closing the
    * last one leaves a new empty timetable.
    */
@@ -317,9 +317,6 @@ export class App {
     programSelect.addEventListener('change', saveSpec);
     groupSelect.addEventListener('change', saveSpec);
 
-    const deleteBtn = h('button', { type: 'button', class: 'btn btn-danger' }, 'Smazat rozvrh');
-    deleteBtn.addEventListener('click', () => this.deleteSchedule(active.id));
-
     const download = renderMenu('Stáhnout', [
       { label: 'PDF', onSelect: () => void this.runExport('pdf') },
       { label: 'PNG', onSelect: () => void this.runExport('png') },
@@ -340,6 +337,8 @@ export class App {
     this.closeMenus = [download.close, importMenu.close];
     const findBtn = h('button', { type: 'button', class: 'btn btn-find', 'aria-pressed': this.finder ? 'true' : 'false' }, 'Nahradit hodinu');
     findBtn.addEventListener('click', () => void this.openFinder());
+    const roomsBtn = h('button', { type: 'button', class: 'btn btn-rooms' }, 'Volné učebny');
+    roomsBtn.addEventListener('click', () => void this.openRoomFinder());
 
     // Two rows: the pickers, then all buttons in one row below them (it only
     // wraps when the screen is too narrow).
@@ -350,7 +349,7 @@ export class App {
         h('label', { class: 'toolbar-field' }, h('span', {}, 'Obor'), programSelect),
         h('label', { class: 'toolbar-field toolbar-field--narrow' }, h('span', {}, 'Kruh'), groupSelect),
       ),
-      h('div', { class: 'toolbar-row toolbar-actions' }, download.element, importMenu.element, fileInput, findBtn, deleteBtn),
+      h('div', { class: 'toolbar-row toolbar-actions' }, download.element, importMenu.element, fileInput, findBtn, roomsBtn),
     );
   }
 
@@ -394,6 +393,22 @@ export class App {
       this.boardHost.querySelector<HTMLElement>('.finder-panel')?.scrollIntoView?.({ block: 'nearest' });
     } finally {
       this.searching = false;
+    }
+  }
+
+  private roomFinderOpen = false;
+
+  /** "Volné učebny": rooms with no official lesson at a time the teacher picks. */
+  private async openRoomFinder(): Promise<void> {
+    if (this.roomFinderOpen) return;
+    this.roomFinderOpen = true;
+    try {
+      const { openRoomFinder } = await import('./room-finder');
+      await openRoomFinder(this.active.lessons);
+    } catch {
+      this.status.textContent = 'Volné učebny se nepodařilo otevřít. Zkus stránku načíst znovu.';
+    } finally {
+      this.roomFinderOpen = false;
     }
   }
 

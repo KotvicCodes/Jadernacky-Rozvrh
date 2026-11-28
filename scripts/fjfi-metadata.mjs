@@ -42,15 +42,25 @@ export function parseTeacherNames(html) {
   return names;
 }
 
-export function parseRoomCodes(html) {
+/**
+ * Rooms from the classroom list (/seznam-uceben): the code printed on the
+ * timetables ("Kód v rozvrhu", without notes such as "(KIPL PC)"), plus its
+ * KOS code, description, building and capacity as published. Rows without
+ * a timetable code are skipped; rooms of other faculties have no KOS code.
+ */
+export function parseRooms(html) {
   const rooms = [];
   for (const [, row] of mainContent(html).matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
     const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(([, text]) => decodeText(text));
-    const room = cells[1]?.replace(/\s*\(.*\)\s*$/, '').trim();
-    if (room) rooms.push(room);
+    const code = cells[1]?.replace(/\s*\(.*\)\s*$/, '').trim();
+    if (code) rooms.push({ code, kos: cells[0] ?? '', description: cells[2] ?? '', building: cells[3] ?? '', capacity: cells[4] ?? '' });
   }
   if (!rooms.length) throw new Error('No room codes on the FJFI classroom page (redesign?)');
   return rooms;
+}
+
+export function parseRoomCodes(html) {
+  return parseRooms(html).map((room) => room.code);
 }
 
 /** Regular courses actually offered in the catalogue's academic year. */

@@ -13,7 +13,7 @@ import {
   shortYearLabel,
   type PageEntry,
 } from '../scripts/fjfi-site.mjs';
-import { parseRoomCodes, parseTeacherNames, updateProgramSource } from '../scripts/fjfi-metadata.mjs';
+import { parseRoomCodes, parseRooms, parseTeacherNames, updateProgramSource } from '../scripts/fjfi-metadata.mjs';
 import { PROGRAMS } from '../src/config';
 import { groupPrograms, kruhChoices, parseManifest, pickFjfiTimetable, splitProgramName, timetableLabel, timetableShortLabel, type FjfiProgram } from '../src/import/web';
 
@@ -153,6 +153,16 @@ describe('automatic metadata refresh', () => {
     expect(parseRoomCodes(`<main><table><tr><th>KOS</th><th>Kód v rozvrhu</th></tr>
       <tr class="room"><td>BR:103</td><td><b>B-103</b> (aula)</td></tr>
       <tr><td>BR:121</td><td>&nbsp;</td></tr></table></main>`)).toEqual(['B-103']);
+  });
+
+  it('reads room details for the free-room finder, keeping published capacity text', () => {
+    expect(parseRooms(`<main><table><tr><th>Kód v KOS</th><th>Kód v rozvrhu</th><th>Popis</th><th>Budova</th><th>kapacita</th></tr>
+      <tr><td>TR:316</td><td>T-316 (KIPL PC)</td><td>počítačová učebna KIPL</td><td><a href="../budovy#trojanova">Trojanova</a></td><td>18  míst, 6 PC</td></tr>
+      <tr><td>&nbsp;</td><td>CH1</td><td>PřF UK, Braunerova posluchárna</td><td>PřF UK - ulice Hlavova</td><td>&nbsp;</td></tr>
+      <tr><td>BR:121</td><td>&nbsp;</td><td>PlasmaLab</td><td>Břehová</td><td>6</td></tr></table></main>`)).toEqual([
+      { code: 'T-316', kos: 'TR:316', description: 'počítačová učebna KIPL', building: 'Trojanova', capacity: '18 míst, 6 PC' },
+      { code: 'CH1', kos: '', description: 'PřF UK, Braunerova posluchárna', building: 'PřF UK - ulice Hlavova', capacity: '' },
+    ]);
   });
 
   it('rejects empty or redesigned OCR pages instead of generating empty dictionaries', () => {
