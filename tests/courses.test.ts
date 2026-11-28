@@ -124,3 +124,19 @@ describe('conservative course matching', () => {
     expect(pickCourseReading(cleaned, department, actual)).toBe(expected);
   });
 });
+
+describe('canonical course codes', () => {
+  const matcher = createCourseMatcher(['01DIM1', '01DIM2']);
+  it('writes known codes as the catalogue does, and leaves other text alone', () => {
+    expect(matcher.canonical('DiM1cv')).toBe('DIM1cv');
+    expect(matcher.canonical('dim1.REZ')).toBe('DIM1.rez');
+    expect(matcher.canonical('01dim1')).toBe('01DIM1');
+    expect(matcher.canonical('Unknown')).toBe('Unknown');
+    expect(pickCourseReading([
+      { text: 'DiM1cv', confidence: 18 },
+      { text: '', confidence: 0 },
+      { text: 'DiMicv', confidence: 9 },
+      { text: 'DiM1cv', confidence: 45 },
+    ], '01', matcher)).toBe('DIM1cv');
+  });
+});

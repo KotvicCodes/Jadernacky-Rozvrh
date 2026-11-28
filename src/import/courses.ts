@@ -4,6 +4,8 @@ import { levenshtein } from './snap';
 export interface CourseMatcher {
   isKnown(text: string, department?: string): boolean;
   snap(text: string, department?: string): string;
+  /** A known code as the catalogue writes it ("DiM1cv" → "DIM1cv"); other text unchanged. */
+  canonical(text: string): string;
 }
 
 interface CourseTitle {
@@ -59,6 +61,11 @@ export function createCourseMatcher(codes: readonly string[]): CourseMatcher {
   };
   return {
     isKnown,
+    canonical(text) {
+      if (!isKnown(text)) return text;
+      const { base, suffix } = split(text);
+      return base + suffix;
+    },
     snap(text, department) {
       const { base, suffix } = split(text);
       // Never redirect a valid course, even if its colour was misdetected.
